@@ -13,7 +13,6 @@ struct FinanceTrackerApp: App {
                 ExchangeRateHistory.self
             )
             SeedData.seedIfEmpty(context: container.mainContext)
-            ReminderScheduler.check(context: container.mainContext)
         } catch {
             fatalError("Failed to create ModelContainer: \(error)")
         }
