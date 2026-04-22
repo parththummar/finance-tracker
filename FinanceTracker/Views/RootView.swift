@@ -6,15 +6,16 @@ struct RootView: View {
     @Query(sort: \Snapshot.date, order: .reverse) private var snapshots: [Snapshot]
 
     var body: some View {
-        NavigationSplitView {
+        HStack(spacing: 0) {
             Sidebar()
-        } detail: {
             VStack(spacing: 0) {
                 TopBar()
-                Divider()
                 content
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color.lBg)
             }
         }
+        .background(Color.lBg)
         .preferredColorScheme(app.preferredColorScheme)
         .onAppear {
             if app.activeSnapshotID == nil, let latest = snapshots.first {
@@ -26,14 +27,36 @@ struct RootView: View {
     @ViewBuilder
     private var content: some View {
         switch app.selectedScreen {
-        case .dashboard:  DashboardView()
-        case .breakdown:  BreakdownView()
-        case .snapshots:  SnapshotListView()
-        case .accounts:   AccountsView()
-        case .people:     PeopleView()
-        case .countries:  CountriesView()
-        case .assetTypes: AssetTypesView()
-        case .settings:   SettingsView()
+        case .dashboard:  scrollable { DashboardView() }
+        case .breakdown:  scrollable { BreakdownView() }
+        case .snapshots:  scrollable { SnapshotListView() }
+        case .settings:   scrollable { SettingsView() }
+        case .accounts:   paged { AccountsView() }
+        case .people:     paged { PeopleView() }
+        case .countries:  paged { CountriesView() }
+        case .assetTypes: paged { AssetTypesView() }
         }
+    }
+
+    @ViewBuilder
+    private func scrollable<V: View>(@ViewBuilder _ v: () -> V) -> some View {
+        ScrollView(.vertical) {
+            v()
+                .padding(.horizontal, 32)
+                .padding(.top, 24)
+                .padding(.bottom, 40)
+                .frame(maxWidth: 1400, alignment: .topLeading)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+        }
+    }
+
+    @ViewBuilder
+    private func paged<V: View>(@ViewBuilder _ v: () -> V) -> some View {
+        v()
+            .padding(.horizontal, 32)
+            .padding(.top, 24)
+            .padding(.bottom, 20)
+            .frame(maxWidth: 1400, alignment: .topLeading)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 }

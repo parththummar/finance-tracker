@@ -49,68 +49,25 @@ struct SnapshotEditorView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                header
+        VStack(alignment: .leading, spacing: 0) {
+            header
 
-                Card {
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Text("ACCOUNT").frame(width: 180, alignment: .leading)
-                            Text("PERSON").frame(width: 80, alignment: .leading)
-                            Text("CCY").frame(width: 50, alignment: .leading)
-                            Spacer()
-                            Text("PREV").frame(width: 120, alignment: .trailing)
-                            Text("Δ").frame(width: 120, alignment: .trailing)
-                            Text("NATIVE VALUE").frame(width: 160, alignment: .trailing)
-                        }
-                        .font(.caption).foregroundStyle(.secondary)
-                        Divider()
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    valuesPanel
 
-                        ForEach(Array(snapshot.values.enumerated()), id: \.element.id) { idx, v in
-                            row(v)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 4)
-                                .background(idx.isMultiple(of: 2)
-                                            ? Color.clear
-                                            : Color.secondary.opacity(0.08))
-                                .clipShape(RoundedRectangle(cornerRadius: 4))
-                        }
-
-                        Divider()
-                        totalsRow
-                    }
-                }
-
-                HStack {
-                    Button(role: .destructive) {
-                        confirmingDelete = true
-                    } label: { Label("Delete Snapshot", systemImage: "trash") }
-                    if showSavedToast {
-                        Label("Saved", systemImage: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
-                            .transition(.opacity)
-                    }
                     if let err = saveError {
-                        Label(err, systemImage: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.red)
-                            .font(.callout)
-                    }
-                    Spacer()
-                    Button("Close") { dismiss() }
-                    if !snapshot.isLocked {
-                        Button { saveDraft() } label: {
-                            Label("Save Draft", systemImage: "square.and.arrow.down")
-                        }
-                        Button(role: .destructive) {
-                            confirmingLock = true
-                        } label: { Label("Lock Snapshot", systemImage: "lock.fill") }
+                        errorBanner(err)
                     }
                 }
+                .padding(24)
             }
-            .padding(24)
+
+            Divider().overlay(Color.lLine)
+            footer
         }
-        .frame(minWidth: 900, minHeight: 700)
+        .background(Color.lBg)
+        .frame(minWidth: 980, minHeight: 680)
         .confirmationDialog("Lock \(snapshot.label)?",
                             isPresented: $confirmingLock,
                             titleVisibility: .visible) {
@@ -137,50 +94,265 @@ struct SnapshotEditorView: View {
         }
     }
 
+    // MARK: - Header
+
     private var header: some View {
-        Card {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text(snapshot.label).font(.title2.bold())
-                    Spacer()
-                    if snapshot.isLocked {
-                        Label("Locked", systemImage: "lock.fill").foregroundStyle(.secondary)
-                    } else {
-                        Label("Draft", systemImage: "pencil").foregroundStyle(.orange)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("SNAPSHOT · \(Fmt.date(snapshot.date).uppercased())")
+                        .font(Typo.eyebrow).tracking(1.5)
+                        .foregroundStyle(Color.lInk3)
+                    HStack(spacing: 10) {
+                        Text(snapshot.label)
+                            .font(Typo.serifNum(26))
+                            .foregroundStyle(Color.lInk)
+                        Pill(text: snapshot.isLocked ? "🔒 locked" : "✎ draft",
+                             emphasis: !snapshot.isLocked)
                     }
+                    Text(snapshot.isLocked
+                         ? "Locked \(snapshot.lockedAt.map { Fmt.date($0) } ?? "") · values frozen"
+                         : "Draft · edit freely until locked")
+                        .font(Typo.serifItalic(13))
+                        .foregroundStyle(Color.lInk3)
                 }
-                HStack {
-                    Text("Date:")
-                    Text(Fmt.date(snapshot.date))
-                }
-                HStack {
-                    Text("USD → INR:")
-                    if snapshot.isLocked {
-                        Text(String(format: "%.4f", snapshot.usdToInrRate))
-                    } else {
-                        TextField("rate", value: Binding(
-                            get: { snapshot.usdToInrRate },
-                            set: { snapshot.usdToInrRate = $0 }
-                        ), format: .number)
-                        .frame(width: 100)
-                        Button {
-                            Task { await fetchLiveRate() }
-                        } label: {
-                            if isFetchingRate {
-                                ProgressView().controlSize(.small)
-                            } else {
-                                Label("Fetch live", systemImage: "arrow.down.circle")
-                            }
+                Spacer()
+                rateBlock
+            }
+            if let err = fetchError {
+                Text(err)
+                    .font(Typo.sans(11))
+                    .foregroundStyle(Color.lLoss)
+            }
+        }
+        .padding(.horizontal, 24).padding(.top, 22).padding(.bottom, 18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .overlay(Rectangle().frame(height: 1).foregroundStyle(Color.lLine), alignment: .bottom)
+    }
+
+    private var rateBlock: some View {
+        VStack(alignment: .trailing, spacing: 4) {
+            Text("USD → INR")
+                .font(Typo.eyebrow).tracking(1.2)
+                .foregroundStyle(Color.lInk3)
+            if snapshot.isLocked {
+                Text(String(format: "₹%.4f", snapshot.usdToInrRate))
+                    .font(Typo.mono(14, weight: .semibold))
+                    .foregroundStyle(Color.lInk)
+            } else {
+                HStack(spacing: 6) {
+                    TextField("", value: Binding(
+                        get: { snapshot.usdToInrRate },
+                        set: { snapshot.usdToInrRate = $0 }
+                    ), format: .number)
+                    .textFieldStyle(.roundedBorder)
+                    .font(Typo.mono(13))
+                    .frame(width: 90)
+                    Button {
+                        Task { await fetchLiveRate() }
+                    } label: {
+                        if isFetchingRate {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Image(systemName: "arrow.down.circle")
+                                .foregroundStyle(Color.lInk2)
                         }
-                        .disabled(isFetchingRate)
-                        .help("Fetch USD→INR for \(Fmt.date(snapshot.date)) from frankfurter.app")
                     }
-                }
-                if let err = fetchError {
-                    Text(err).foregroundStyle(.red).font(.caption)
+                    .disabled(isFetchingRate)
+                    .buttonStyle(.plain)
+                    .help("Fetch USD→INR for \(Fmt.date(snapshot.date)) from frankfurter.app")
                 }
             }
         }
+    }
+
+    // MARK: - Values panel
+
+    private var valuesPanel: some View {
+        Panel {
+            VStack(spacing: 0) {
+                PanelHead(title: "Account values", meta: "\(snapshot.values.count) rows")
+                rowHeader
+                ForEach(Array(snapshot.values.enumerated()), id: \.element.id) { idx, v in
+                    row(v, idx: idx)
+                    if idx < snapshot.values.count - 1 {
+                        Divider().overlay(Color.lLine)
+                    }
+                }
+                Divider().overlay(Color.lLine)
+                totalsRow
+            }
+        }
+    }
+
+    private var rowHeader: some View {
+        HStack {
+            Text("Account").frame(maxWidth: .infinity, alignment: .leading)
+            Text("Person").frame(width: 110, alignment: .leading)
+            Text("CCY").frame(width: 50, alignment: .leading)
+            Text("Prev").frame(width: 130, alignment: .trailing)
+            Text("Δ").frame(width: 130, alignment: .trailing)
+            Text("Native value").frame(width: 170, alignment: .trailing)
+        }
+        .font(Typo.eyebrow).tracking(1.2).foregroundStyle(Color.lInk3)
+        .padding(.horizontal, 18).padding(.vertical, 10)
+        .background(Color.lSunken)
+        .overlay(Rectangle().frame(height: 1).foregroundStyle(Color.lLine), alignment: .bottom)
+    }
+
+    @ViewBuilder
+    private func row(_ v: AssetValue, idx: Int) -> some View {
+        let ccy = v.account?.nativeCurrency ?? .USD
+        let prev = previousValue(for: v.account)
+        let diff = prev.map { v.nativeValue - $0 }
+        HStack {
+            Text(v.account?.name ?? "—")
+                .font(Typo.sans(13, weight: .medium))
+                .foregroundStyle(Color.lInk)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Text(v.account?.person?.name ?? "—")
+                .font(Typo.sans(12))
+                .foregroundStyle(Color.lInk2)
+                .frame(width: 110, alignment: .leading)
+
+            Text(ccy.rawValue)
+                .font(Typo.mono(11))
+                .foregroundStyle(Color.lInk3)
+                .frame(width: 50, alignment: .leading)
+
+            Group {
+                if let prev {
+                    Text(Fmt.currency(prev, ccy))
+                        .foregroundStyle(Color.lInk3)
+                } else {
+                    Text("—").foregroundStyle(Color.lInk3)
+                }
+            }
+            .font(Typo.mono(12))
+            .frame(width: 130, alignment: .trailing)
+
+            Group {
+                if let diff {
+                    Text(Fmt.signedDelta(diff, ccy))
+                        .foregroundStyle(diff == 0 ? Color.lInk3 : (diff > 0 ? Color.lGain : Color.lLoss))
+                } else {
+                    Text("—").foregroundStyle(Color.lInk3)
+                }
+            }
+            .font(Typo.mono(12, weight: .medium))
+            .frame(width: 130, alignment: .trailing)
+
+            if snapshot.isLocked {
+                Text(Fmt.currency(v.nativeValue, ccy))
+                    .font(Typo.mono(13, weight: .semibold))
+                    .foregroundStyle(Color.lInk)
+                    .frame(width: 170, alignment: .trailing)
+            } else {
+                TextField("", value: Binding(
+                    get: { v.nativeValue },
+                    set: { v.nativeValue = $0 }
+                ), format: .number)
+                .textFieldStyle(.roundedBorder)
+                .multilineTextAlignment(.trailing)
+                .font(Typo.mono(13))
+                .frame(width: 170)
+            }
+        }
+        .padding(.horizontal, 18).padding(.vertical, 10)
+        .background(idx.isMultiple(of: 2) ? Color.clear : Color.lSunken.opacity(0.5))
+    }
+
+    private var totalsRow: some View {
+        let prevTotal = previousTotalDisplay
+        let total = liveTotalDisplay
+        let diff = prevTotal.map { total - $0 }
+        let ccy = app.displayCurrency
+        return HStack {
+            Text("TOTAL (\(ccy.rawValue))")
+                .font(Typo.eyebrow).tracking(1.2)
+                .foregroundStyle(Color.lInk)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Group {
+                if let prevTotal {
+                    Text(Fmt.currency(prevTotal, ccy))
+                        .foregroundStyle(Color.lInk3)
+                } else {
+                    Text("—").foregroundStyle(Color.lInk3)
+                }
+            }
+            .font(Typo.mono(12))
+            .frame(width: 130, alignment: .trailing)
+
+            Group {
+                if let diff {
+                    Text(Fmt.signedDelta(diff, ccy))
+                        .foregroundStyle(diff == 0 ? Color.lInk3 : (diff > 0 ? Color.lGain : Color.lLoss))
+                } else {
+                    Text("—").foregroundStyle(Color.lInk3)
+                }
+            }
+            .font(Typo.mono(12, weight: .semibold))
+            .frame(width: 130, alignment: .trailing)
+
+            Text(Fmt.currency(total, ccy))
+                .font(Typo.mono(14, weight: .bold))
+                .foregroundStyle(Color.lInk)
+                .frame(width: 170, alignment: .trailing)
+        }
+        .padding(.horizontal, 18).padding(.vertical, 12)
+        .background(Color.lSunken)
+    }
+
+    // MARK: - Footer / misc
+
+    private var footer: some View {
+        HStack(spacing: 10) {
+            GhostButton(action: { confirmingDelete = true }) {
+                HStack(spacing: 5) {
+                    Image(systemName: "trash").font(.system(size: 10, weight: .bold))
+                    Text("Delete")
+                }
+            }
+            if showSavedToast {
+                HStack(spacing: 6) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(Color.lGain)
+                    Text("Saved").font(Typo.sans(12)).foregroundStyle(Color.lInk2)
+                }
+                .transition(.opacity)
+            }
+            Spacer()
+            GhostButton(action: { dismiss() }) { Text("Close") }
+            if !snapshot.isLocked {
+                GhostButton(action: saveDraft) {
+                    HStack(spacing: 5) {
+                        Image(systemName: "square.and.arrow.down").font(.system(size: 10, weight: .bold))
+                        Text("Save Draft")
+                    }
+                }
+                PrimaryButton(action: { confirmingLock = true }) {
+                    HStack(spacing: 5) {
+                        Image(systemName: "lock.fill").font(.system(size: 10, weight: .bold))
+                        Text("Lock Snapshot")
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 24).padding(.vertical, 16)
+    }
+
+    private func errorBanner(_ err: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(Color.lLoss)
+            Text(err).font(Typo.sans(12)).foregroundStyle(Color.lLoss)
+        }
+        .padding(12)
+        .background(Color.lLossSoft.opacity(0.4))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.lLoss.opacity(0.3), lineWidth: 1))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
     private func saveDraft() {
@@ -210,94 +382,5 @@ struct SnapshotEditorView: View {
         } catch {
             fetchError = "Fetch failed: \(error.localizedDescription)"
         }
-    }
-
-    @ViewBuilder
-    private func row(_ v: AssetValue) -> some View {
-        let ccy = v.account?.nativeCurrency ?? .USD
-        let prev = previousValue(for: v.account)
-        let diff = prev.map { v.nativeValue - $0 }
-        HStack {
-            Text(v.account?.name ?? "—").frame(width: 180, alignment: .leading)
-            Text(v.account?.person?.name ?? "").frame(width: 80, alignment: .leading).foregroundStyle(.secondary)
-            Text(ccy.rawValue).frame(width: 50, alignment: .leading)
-            Spacer()
-
-            Group {
-                if let prev {
-                    Text(Fmt.currency(prev, ccy))
-                } else {
-                    Text("—").foregroundStyle(.secondary)
-                }
-            }
-            .font(.callout.monospacedDigit())
-            .frame(width: 120, alignment: .trailing)
-
-            Group {
-                if let diff {
-                    Text(Fmt.signedDelta(diff, ccy))
-                        .foregroundStyle(Palette.deltaColor(diff))
-                } else {
-                    Text("—").foregroundStyle(.secondary)
-                }
-            }
-            .font(.callout.monospacedDigit())
-            .frame(width: 120, alignment: .trailing)
-
-            if snapshot.isLocked {
-                Text(Fmt.currency(v.nativeValue, ccy))
-                    .font(.body.monospacedDigit())
-                    .frame(width: 160, alignment: .trailing)
-            } else {
-                TextField("value", value: Binding(
-                    get: { v.nativeValue },
-                    set: { v.nativeValue = $0 }
-                ), format: .number)
-                .multilineTextAlignment(.trailing)
-                .frame(width: 160)
-            }
-        }
-        .font(.callout)
-    }
-
-    private var totalsRow: some View {
-        let prevTotal = previousTotalDisplay
-        let total = liveTotalDisplay
-        let diff = prevTotal.map { total - $0 }
-        let ccy = app.displayCurrency
-        return HStack {
-            Text("TOTAL (\(ccy.rawValue))")
-                .font(.caption.bold())
-                .frame(width: 180, alignment: .leading)
-            Spacer()
-
-            Group {
-                if let prevTotal {
-                    Text(Fmt.currency(prevTotal, ccy))
-                } else {
-                    Text("—").foregroundStyle(.secondary)
-                }
-            }
-            .font(.body.monospacedDigit())
-            .frame(width: 120, alignment: .trailing)
-
-            Group {
-                if let diff {
-                    Text(Fmt.signedDelta(diff, ccy))
-                        .foregroundStyle(Palette.deltaColor(diff))
-                } else {
-                    Text("—").foregroundStyle(.secondary)
-                }
-            }
-            .font(.body.monospacedDigit())
-            .frame(width: 120, alignment: .trailing)
-
-            Text(Fmt.currency(total, ccy))
-                .font(.body.bold().monospacedDigit())
-                .frame(width: 160, alignment: .trailing)
-        }
-        .padding(.horizontal, 6)
-        .padding(.vertical, 6)
-        .background(Color.secondary.opacity(0.1), in: RoundedRectangle(cornerRadius: 4))
     }
 }

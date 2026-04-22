@@ -4,6 +4,7 @@ import SwiftData
 struct PersonEditorSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var context
+    @Query(sort: \Person.name) private var allPeople: [Person]
     let existing: Person?
     @State private var name: String = ""
     @State private var color: Color = .blue
@@ -11,7 +12,7 @@ struct PersonEditorSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text(existing == nil ? "New Person" : "Edit Person").font(.title2.bold())
+            Text(existing == nil ? "New Person" : "Edit Person").font(Typo.serifNum(24))
             Form {
                 TextField("Name", text: $name)
                 ColorPicker("Chart color", selection: $color, supportsOpacity: false)
@@ -33,7 +34,12 @@ struct PersonEditorSheet: View {
         .frame(minWidth: 400)
         .onAppear {
             name = existing?.name ?? ""
-            color = Color.fromHex(existing?.colorHex) ?? Palette.fallback(for: existing?.name ?? UUID().uuidString)
+            if let hex = existing?.colorHex, let c = Color.fromHex(hex) {
+                color = c
+            } else {
+                let taken = allPeople.filter { $0.id != existing?.id }.compactMap { $0.colorHex }
+                color = Palette.unusedFallback(taken: taken)
+            }
         }
     }
 

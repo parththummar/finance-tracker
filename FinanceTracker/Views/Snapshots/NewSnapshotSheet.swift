@@ -18,63 +18,149 @@ struct NewSnapshotSheet: View {
     private let minGapDays = 7
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("New Snapshot").font(.title2.bold())
+        VStack(alignment: .leading, spacing: 0) {
+            header
 
-            Form {
-                DatePicker("Date", selection: $date, in: ...Date(), displayedComponents: .date)
+            VStack(alignment: .leading, spacing: 18) {
+                grid
+                noticeBox
+                if let err = errorMessage {
+                    HStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(Color.lLoss)
+                        Text(err).font(Typo.sans(12)).foregroundStyle(Color.lLoss)
+                    }
+                    .padding(12)
+                    .background(Color.lLossSoft.opacity(0.4))
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.lLoss.opacity(0.3), lineWidth: 1))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
+            }
+            .padding(24)
 
-                HStack {
-                    Text("USD → INR rate")
-                    Spacer()
+            Divider().overlay(Color.lLine)
+
+            HStack {
+                Spacer()
+                GhostButton(action: { dismiss() }) { Text("Cancel") }
+                PrimaryButton(action: create) {
+                    HStack(spacing: 5) {
+                        Image(systemName: "plus").font(.system(size: 10, weight: .bold))
+                        Text("Create Snapshot")
+                    }
+                }
+                .keyboardShortcut(.defaultAction)
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 16)
+        }
+        .background(Color.lBg)
+        .frame(minWidth: 580)
+        .onAppear {
+            if let prev = snapshots.first { rate = prev.usdToInrRate }
+        }
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text("NEW SNAPSHOT")
+                .font(Typo.eyebrow).tracking(1.5).foregroundStyle(Color.lInk3)
+            Text("Record this quarter").font(Typo.serifNum(26))
+                .foregroundStyle(Color.lInk)
+            Text("Values become locked after save · edit freely until then")
+                .font(Typo.serifItalic(13))
+                .foregroundStyle(Color.lInk3)
+        }
+        .padding(.horizontal, 24).padding(.top, 22).padding(.bottom, 18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .overlay(Rectangle().frame(height: 1).foregroundStyle(Color.lLine), alignment: .bottom)
+    }
+
+    private var grid: some View {
+        LazyVGrid(
+            columns: [GridItem(.flexible(), spacing: 18), GridItem(.flexible(), spacing: 18)],
+            alignment: .leading,
+            spacing: 14
+        ) {
+            field(label: "Snapshot date") {
+                DatePicker("", selection: $date, in: ...Date(), displayedComponents: .date)
+                    .labelsHidden()
+                    .datePickerStyle(.field)
+            }
+
+            field(label: "USD → INR rate") {
+                HStack(spacing: 6) {
+                    TextField("", value: $rate, format: .number)
+                        .textFieldStyle(.roundedBorder)
+                        .font(Typo.mono(13))
                     Button {
                         Task { await fetchLiveRate() }
                     } label: {
                         if isFetchingRate {
                             ProgressView().controlSize(.small)
                         } else {
-                            Label("Fetch live", systemImage: "arrow.down.circle")
+                            Image(systemName: "arrow.down.circle")
                         }
                     }
                     .disabled(isFetchingRate)
-                    .help("Fetch current USD→INR from frankfurter.app")
-                    TextField("rate", value: $rate, format: .number)
-                        .multilineTextAlignment(.trailing)
-                        .frame(width: 120)
+                    .buttonStyle(.plain)
+                    .help("Fetch live rate for chosen date")
+                    .foregroundStyle(Color.lInk2)
                 }
-                .onAppear {
-                    if let prev = snapshots.first {
-                        rate = prev.usdToInrRate
-                    }
-                }
-
-                if let fetched = rateFetchedAt {
-                    Text("Live rate fetched \(Fmt.date(fetched)).")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-
-                Toggle("Copy values from previous snapshot", isOn: $copyPrevious)
-                    .help("Pre-fill each active account with its prior value. Edit after creation.")
-            }
-            .formStyle(.grouped)
-
-            if let err = errorMessage {
-                Text(err).foregroundStyle(.red).font(.callout)
             }
 
-            HStack {
-                Spacer()
-                Button("Cancel") { dismiss() }
-                Button {
-                    create()
-                } label: {
-                    Label("Create", systemImage: "plus")
+            Toggle(isOn: $copyPrevious) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Copy previous values")
+                        .font(Typo.sans(12, weight: .medium))
+                        .foregroundStyle(Color.lInk)
+                    Text("Prefill active accounts from last snapshot")
+                        .font(Typo.sans(11))
+                        .foregroundStyle(Color.lInk3)
                 }
-                .keyboardShortcut(.defaultAction)
+            }
+            .toggleStyle(.switch)
+
+            if let fetched = rateFetchedAt {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("LIVE RATE").font(Typo.eyebrow).tracking(1.2)
+                        .foregroundStyle(Color.lInk3)
+                    Text("Fetched \(Fmt.date(fetched))")
+                        .font(Typo.mono(11))
+                        .foregroundStyle(Color.lInk2)
+                }
             }
         }
-        .padding(24)
-        .frame(minWidth: 500)
+    }
+
+    @ViewBuilder
+    private func field<V: View>(label: String, @ViewBuilder content: () -> V) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(label.uppercased())
+                .font(Typo.eyebrow).tracking(1.2).foregroundStyle(Color.lInk3)
+            content()
+        }
+    }
+
+    private var noticeBox: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "info.circle.fill")
+                .foregroundStyle(Color.lInk3)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Heads up")
+                    .font(Typo.sans(12, weight: .semibold))
+                    .foregroundStyle(Color.lInk)
+                Text("Exchange rates are immutable once locked. The rate set here is used for every balance entered in this snapshot.")
+                    .font(Typo.sans(12))
+                    .foregroundStyle(Color.lInk2)
+                    .lineSpacing(2)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(14)
+        .background(Color.lSunken)
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.lLine, lineWidth: 1))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 
     @MainActor
@@ -94,21 +180,18 @@ struct NewSnapshotSheet: View {
     private func create() {
         let cal = Calendar.current
         let chosen = cal.startOfDay(for: date)
-
         if chosen > cal.startOfDay(for: Date()) {
             errorMessage = "Future snapshots not allowed."
             return
         }
-
         for s in snapshots {
             let existing = cal.startOfDay(for: s.date)
             let days = abs(cal.dateComponents([.day], from: existing, to: chosen).day ?? 0)
             if days < minGapDays {
-                errorMessage = "Must be at least \(minGapDays) days from existing snapshot (\(Fmt.date(existing))). Choose a different date."
+                errorMessage = "Must be at least \(minGapDays) days from existing snapshot (\(Fmt.date(existing)))."
                 return
             }
         }
-
         if rate <= 0 {
             errorMessage = "Exchange rate must be positive."
             return

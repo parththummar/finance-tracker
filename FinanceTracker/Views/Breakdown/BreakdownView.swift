@@ -26,13 +26,10 @@ struct BreakdownView: View {
     @Query private var accounts: [Account]
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                header
-                Card { treemapSection }
-                Card { tableSection }
-            }
-            .padding(16)
+        VStack(alignment: .leading, spacing: 20) {
+            header
+            Panel { treemapSection }
+            Panel { tableSection }
         }
         .sheet(item: $historyAccount) { AccountHistoryView(account: $0) }
     }
@@ -45,32 +42,46 @@ struct BreakdownView: View {
     // MARK: header
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("Breakdown").font(.title2.bold())
-                Spacer()
-                Picker("Group by", selection: $groupBy) {
-                    ForEach(GroupKey.allCases) { Text($0.rawValue).tag($0) }
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("BREAKDOWN")
+                        .font(Typo.eyebrow).tracking(1.5)
+                        .foregroundStyle(Color.lInk3)
+                    HStack(spacing: 8) {
+                        Text("Allocation").font(Typo.serifNum(32))
+                        Text("— grouped by \(groupBy.rawValue.lowercased())")
+                            .font(Typo.serifItalic(28))
+                            .foregroundStyle(Color.lInk3)
+                    }
+                    .foregroundStyle(Color.lInk)
                 }
-                .frame(width: 220)
+                Spacer()
+                SegControl<GroupKey>(
+                    options: GroupKey.allCases.map { (label: $0.rawValue, value: $0) },
+                    selection: $groupBy
+                )
             }
 
             if !filters.isEmpty {
                 HStack(spacing: 6) {
-                    Text("Filters:").font(.caption).foregroundStyle(.secondary)
+                    Text("FILTERS")
+                        .font(Typo.eyebrow).tracking(1.2)
+                        .foregroundStyle(Color.lInk3)
                     ForEach(filters) { f in
                         HStack(spacing: 4) {
-                            Text("\(f.key.rawValue): \(f.label)").font(.caption)
+                            Text("\(f.key.rawValue) · \(f.label)")
+                                .font(Typo.mono(10.5, weight: .medium))
                             Button {
                                 filters.removeAll { $0.id == f.id }
-                            } label: { Image(systemName: "xmark.circle.fill") }
+                            } label: { Image(systemName: "xmark").font(.system(size: 8, weight: .bold)) }
                             .buttonStyle(.plain)
                         }
                         .padding(.horizontal, 8).padding(.vertical, 4)
-                        .background(.secondary.opacity(0.15), in: Capsule())
+                        .foregroundStyle(Color.lInk2)
+                        .overlay(Capsule().stroke(Color.lLine, lineWidth: 1))
                     }
-                    Button("Clear all") { filters.removeAll() }
-                        .font(.caption)
+                    GhostButton(action: { filters.removeAll() }) { Text("Clear") }
                 }
             }
         }
@@ -147,31 +158,35 @@ struct BreakdownView: View {
     }
 
     private var treemapSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            let total = filteredRows.map(\.display).reduce(0, +)
-            HStack {
-                Text("TREEMAP").font(.caption).foregroundStyle(.secondary)
-                Spacer()
-                Text(Fmt.currency(total, app.displayCurrency))
-                    .font(.callout.monospacedDigit())
-            }
-            TreemapView(
-                tiles: tiles,
-                currency: app.displayCurrency,
-                onTap: { tile in handleTap(tile) },
-                onHover: { tile in hovered = tile }
-            )
-            .frame(height: 460)
-            .background(Color.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
+        VStack(alignment: .leading, spacing: 0) {
+            PanelHead(title: "Treemap", meta: Fmt.compact(filteredRows.map(\.display).reduce(0, +), app.displayCurrency))
+            VStack(alignment: .leading, spacing: 10) {
+                TreemapView(
+                    tiles: tiles,
+                    currency: app.displayCurrency,
+                    onTap: { tile in handleTap(tile) },
+                    onHover: { tile in hovered = tile }
+                )
+                .frame(height: 460)
+                .background(Color.lSunken)
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.lLine, lineWidth: 1))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
 
-            if let h = hovered {
-                Text("\(h.label) — \(Fmt.currency(h.value, app.displayCurrency))")
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
-            } else {
-                Text("Click parent tile to filter. Click account tile to open history chart.")
-                    .font(.caption).foregroundStyle(.secondary)
+                if let h = hovered {
+                    HStack {
+                        Text(h.label).font(Typo.sans(12, weight: .semibold))
+                        Text("·").foregroundStyle(Color.lInk4)
+                        Text(Fmt.currency(h.value, app.displayCurrency))
+                            .font(Typo.mono(12, weight: .medium))
+                    }
+                    .foregroundStyle(Color.lInk2)
+                } else {
+                    Text("Click group to filter · click account for history")
+                        .font(Typo.serifItalic(13))
+                        .foregroundStyle(Color.lInk3)
+                }
             }
+            .padding(18)
         }
     }
 
@@ -182,15 +197,11 @@ struct BreakdownView: View {
         }
         let isParent = !tile.children.isEmpty
         if isParent {
-            let newFilter = Filter(key: groupBy, label: tile.label, matchValue: matchFor(groupBy, label: tile.label))
+            let newFilter = Filter(key: groupBy, label: tile.label, matchValue: tile.label)
             if !filters.contains(where: { $0.key == newFilter.key && $0.matchValue == newFilter.matchValue }) {
                 filters.append(newFilter)
             }
         }
-    }
-
-    private func matchFor(_ key: GroupKey, label: String) -> String {
-        label
     }
 
     // MARK: table
@@ -212,36 +223,62 @@ struct BreakdownView: View {
     }
 
     private var tableSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            let rows = filteredRows.sorted { $0.display > $1.display }
-            let total = rows.map(\.display).reduce(0, +)
-            HStack {
-                Text("ACCOUNTS — \(rows.count)")
-                    .font(.caption).foregroundStyle(.secondary)
-                Spacer()
+        let rows = filteredRows.sorted { $0.display > $1.display }
+        let total = rows.map(\.display).reduce(0, +)
+        return VStack(spacing: 0) {
+            PanelHead(title: "Accounts", meta: "\(rows.count) total")
+            VStack(spacing: 0) {
+                HStack {
+                    Text("Account").frame(maxWidth: .infinity, alignment: .leading)
+                    Text("Owner").frame(width: 130, alignment: .leading)
+                    Text("Country").frame(width: 70, alignment: .leading)
+                    Text("Type").frame(width: 140, alignment: .leading)
+                    Text("Native").frame(width: 120, alignment: .trailing)
+                    Text(app.displayCurrency.rawValue).frame(width: 120, alignment: .trailing)
+                    Text("%").frame(width: 60, alignment: .trailing)
+                }
+                .font(Typo.eyebrow).tracking(1.2)
+                .foregroundStyle(Color.lInk3)
+                .padding(.horizontal, 18).padding(.vertical, 10)
+                .background(Color.lSunken)
+                .overlay(Rectangle().frame(height: 1).foregroundStyle(Color.lLine), alignment: .bottom)
+
+                ForEach(Array(rows.enumerated()), id: \.element.id) { i, r in
+                    HStack {
+                        Text(r.name).font(Typo.sans(12.5, weight: .medium))
+                            .foregroundStyle(Color.lInk)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        HStack(spacing: 5) {
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(r.personColor).frame(width: 6, height: 12)
+                            Text(r.person).font(Typo.sans(12))
+                        }
+                        .foregroundStyle(Color.lInk2)
+                        .frame(width: 130, alignment: .leading)
+                        Text(r.country).font(.system(size: 13))
+                            .frame(width: 70, alignment: .leading)
+                        Text(r.assetType).font(Typo.sans(12)).foregroundStyle(Color.lInk2)
+                            .frame(width: 140, alignment: .leading)
+                        Text(Fmt.currency(r.nativeValue, r.currency))
+                            .font(Typo.mono(12)).foregroundStyle(Color.lInk2)
+                            .frame(width: 120, alignment: .trailing)
+                        Text(Fmt.compact(r.display, app.displayCurrency))
+                            .font(Typo.mono(12, weight: .semibold))
+                            .frame(width: 120, alignment: .trailing)
+                        Text(total > 0 ? String(format: "%.1f%%", r.display / total * 100) : "—")
+                            .font(Typo.mono(11))
+                            .foregroundStyle(Color.lInk3)
+                            .frame(width: 60, alignment: .trailing)
+                    }
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 10)
+                    .background(i.isMultiple(of: 2) ? Color.clear : Color.lSunken.opacity(0.5))
+
+                    if i < rows.count - 1 {
+                        Divider().overlay(Color.lLine)
+                    }
+                }
             }
-            Divider()
-            Table(rows) {
-                TableColumn("Account")  { Text($0.name) }
-                TableColumn("Person")   { Text($0.person) }
-                TableColumn("Country")  { Text($0.country) }
-                TableColumn("Category") { Text($0.category) }
-                TableColumn("Type")     { Text($0.assetType) }
-                TableColumn("Native")   { r in
-                    Text(Fmt.currency(r.nativeValue, r.currency))
-                        .font(.body.monospacedDigit())
-                }
-                TableColumn(app.displayCurrency.rawValue) { r in
-                    Text(Fmt.currency(r.display, app.displayCurrency))
-                        .font(.body.monospacedDigit())
-                }
-                TableColumn("%") { r in
-                    Text(total > 0 ? Fmt.percent(r.display / total) : "—")
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .frame(minHeight: 300)
         }
     }
 }

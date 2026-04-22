@@ -4,6 +4,7 @@ import SwiftData
 struct CountryEditorSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var context
+    @Query(sort: \Country.code) private var allCountries: [Country]
     let existing: Country?
 
     @State private var code: String = ""
@@ -15,7 +16,7 @@ struct CountryEditorSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text(existing == nil ? "New Country" : "Edit Country").font(.title2.bold())
+            Text(existing == nil ? "New Country" : "Edit Country").font(Typo.serifNum(24))
             Form {
                 TextField("Code (US, IN)", text: $code).textCase(.uppercase)
                 TextField("Name", text: $name)
@@ -46,11 +47,17 @@ struct CountryEditorSheet: View {
 
     private func prefill() {
         guard let c = existing else {
-            color = Palette.fallback(for: UUID().uuidString)
+            let taken = allCountries.compactMap { $0.colorHex }
+            color = Palette.unusedFallback(taken: taken)
             return
         }
         code = c.code; name = c.name; flag = c.flag; defaultCurrency = c.defaultCurrency
-        color = Color.fromHex(c.colorHex) ?? Palette.fallback(for: c.code)
+        if let hex = c.colorHex, let col = Color.fromHex(hex) {
+            color = col
+        } else {
+            let taken = allCountries.filter { $0.id != c.id }.compactMap { $0.colorHex }
+            color = Palette.unusedFallback(taken: taken)
+        }
     }
 
     private func save() {

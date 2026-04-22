@@ -6,6 +6,7 @@ struct FinanceTrackerApp: App {
     let container: ModelContainer
 
     init() {
+        FontRegistrar.registerIfNeeded()
         do {
             container = try ModelContainer(
                 for: Person.self, Country.self, AssetType.self,

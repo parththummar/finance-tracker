@@ -9,32 +9,11 @@ struct PeopleView: View {
     @State private var confirmDelete: Person?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("People").font(.title2.bold())
-                Spacer()
-                Button { creatingNew = true } label: { Label("New Person", systemImage: "plus") }
-            }
-
-            Table(people) {
-                TableColumn("Color") { p in
-                    Circle()
-                        .fill(Color.fromHex(p.colorHex) ?? Palette.fallback(for: p.name))
-                        .frame(width: 14, height: 14)
-                        .overlay(Circle().stroke(.secondary.opacity(0.3), lineWidth: 0.5))
-                }
-                .width(50)
-                TableColumn("Name") { p in Text(p.name) }
-                TableColumn("Accounts") { p in Text("\(p.accounts.count)") }
-                TableColumn("") { p in
-                    HStack(spacing: 6) {
-                        Button("Edit") { editing = p }
-                        Button("Delete…", role: .destructive) { confirmDelete = p }
-                    }
-                }
-            }
+        VStack(alignment: .leading, spacing: 20) {
+            header
+            tablePanel
         }
-        .padding(16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .sheet(item: $editing) { PersonEditorSheet(existing: $0) }
         .sheet(isPresented: $creatingNew) { PersonEditorSheet(existing: nil) }
         .confirmationDialog("Delete \(confirmDelete?.name ?? "")?",
@@ -48,5 +27,93 @@ struct PeopleView: View {
         } message: {
             Text("Person, all \(confirmDelete?.accounts.count ?? 0) accounts, and all historical snapshot values will be deleted. Cannot be undone.")
         }
+    }
+
+    private var header: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("BREAKDOWN")
+                    .font(Typo.eyebrow).tracking(1.5).foregroundStyle(Color.lInk3)
+                HStack(spacing: 8) {
+                    Text("People").font(Typo.serifNum(32))
+                    Text("— \(people.count)").font(Typo.serifItalic(28))
+                        .foregroundStyle(Color.lInk3)
+                }
+                .foregroundStyle(Color.lInk)
+            }
+            Spacer()
+            PrimaryButton(action: { creatingNew = true }) {
+                HStack(spacing: 5) {
+                    Image(systemName: "plus").font(.system(size: 10, weight: .bold))
+                    Text("New Person")
+                }
+            }
+        }
+    }
+
+    private var tablePanel: some View {
+        Panel {
+            VStack(spacing: 0) {
+                PanelHead(title: "Household members", meta: "\(people.count) total")
+                rowHeader
+                ScrollView(.vertical) {
+                    LazyVStack(spacing: 0) {
+                        ForEach(Array(people.enumerated()), id: \.element.id) { idx, p in
+                            row(p, idx: idx)
+                            if idx < people.count - 1 {
+                                Divider().overlay(Color.lLine)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .frame(maxHeight: .infinity)
+    }
+
+    private var rowHeader: some View {
+        HStack {
+            Text("Color").frame(width: 60, alignment: .leading)
+            Text("Name").frame(maxWidth: .infinity, alignment: .leading)
+            Text("Accounts").frame(width: 100, alignment: .trailing)
+            Text("").frame(width: 160)
+        }
+        .font(Typo.eyebrow).tracking(1.2).foregroundStyle(Color.lInk3)
+        .padding(.horizontal, 18).padding(.vertical, 10)
+        .background(Color.lSunken)
+        .overlay(Rectangle().frame(height: 1).foregroundStyle(Color.lLine), alignment: .bottom)
+    }
+
+    private func row(_ p: Person, idx: Int) -> some View {
+        HStack {
+            ColorSwatchButton(
+                current: Color.fromHex(p.colorHex) ?? Palette.fallback(for: p.name),
+                onPick: { c in
+                    p.colorHex = c.toHex()
+                    try? context.save()
+                }
+            )
+            .frame(width: 60, alignment: .leading)
+
+            Text(p.name)
+                .font(Typo.sans(13, weight: .medium))
+                .foregroundStyle(Color.lInk)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Text("\(p.accounts.count)")
+                .font(Typo.mono(12))
+                .foregroundStyle(Color.lInk2)
+                .frame(width: 100, alignment: .trailing)
+
+            HStack(spacing: 6) {
+                GhostButton(action: { editing = p }) { Text("Edit") }
+                GhostButton(action: { confirmDelete = p }) {
+                    Image(systemName: "trash").font(.system(size: 10, weight: .bold))
+                }
+            }
+            .frame(width: 160, alignment: .trailing)
+        }
+        .padding(.horizontal, 18).padding(.vertical, 10)
+        .background(idx.isMultiple(of: 2) ? Color.clear : Color.lSunken.opacity(0.5))
     }
 }

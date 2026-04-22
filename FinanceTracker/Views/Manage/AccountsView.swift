@@ -9,62 +9,17 @@ struct AccountsView: View {
     @State private var confirmDelete: Account?
     @State private var showInactive: Bool = true
     @State private var historyAccount: Account?
-    @State private var selection: Account.ID?
 
     private var visible: [Account] {
         showInactive ? accounts : accounts.filter(\.isActive)
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("Accounts").font(.title2.bold())
-                Spacer()
-                Toggle("Show retired", isOn: $showInactive)
-                Button {
-                    creatingNew = true
-                } label: { Label("New Account", systemImage: "plus") }
-            }
-
-            Table(visible, selection: $selection) {
-                TableColumn("Name") { a in Text(a.name) }
-                TableColumn("Person") { a in Text(a.person?.name ?? "—") }
-                TableColumn("Country") { a in Text("\(a.country?.flag ?? "") \(a.country?.code ?? "")") }
-                TableColumn("Type") { a in Text(a.assetType?.name ?? "—") }
-                TableColumn("Ccy") { a in Text(a.nativeCurrency.rawValue) }
-                TableColumn("Status") { a in Text(a.isActive ? "Active" : "Retired") }
-                TableColumn("") { a in
-                    HStack(spacing: 6) {
-                        Button { historyAccount = a } label: {
-                            Image(systemName: "chart.line.uptrend.xyaxis")
-                        }
-                        .help("Show history chart")
-                        Button("Edit") { editing = a }
-                        Menu {
-                            Button("Show History") { historyAccount = a }
-                            Button(a.isActive ? "Retire" : "Reactivate") {
-                                a.isActive.toggle()
-                                try? context.save()
-                            }
-                            Button("Delete…", role: .destructive) {
-                                confirmDelete = a
-                            }
-                        } label: { Image(systemName: "ellipsis.circle") }
-                    }
-                }
-            }
-            .contextMenu(forSelectionType: Account.ID.self) { ids in
-                if let id = ids.first, let a = accounts.first(where: { $0.id == id }) {
-                    Button("Show History") { historyAccount = a }
-                    Button("Edit") { editing = a }
-                }
-            } primaryAction: { ids in
-                if let id = ids.first, let a = accounts.first(where: { $0.id == id }) {
-                    historyAccount = a
-                }
-            }
+        VStack(alignment: .leading, spacing: 20) {
+            header
+            tablePanel
         }
-        .padding(16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .sheet(item: $editing) { AccountEditorSheet(existing: $0) }
         .sheet(isPresented: $creatingNew) { AccountEditorSheet(existing: nil) }
         .sheet(item: $historyAccount) { AccountHistoryView(account: $0) }
@@ -79,5 +34,146 @@ struct AccountsView: View {
         } message: {
             Text("Account and all \(confirmDelete?.values.count ?? 0) historical values across snapshots will be deleted. Cannot be undone.")
         }
+    }
+
+    private var header: some View {
+        HStack(spacing: 16) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("DATA · ALL ACCOUNTS")
+                    .font(Typo.eyebrow).tracking(1.5).foregroundStyle(Color.lInk3)
+                HStack(spacing: 8) {
+                    Text("Accounts").font(Typo.serifNum(32))
+                    Text("— \(visible.count)").font(Typo.serifItalic(28))
+                        .foregroundStyle(Color.lInk3)
+                }
+                .foregroundStyle(Color.lInk)
+            }
+            Spacer()
+            Toggle("", isOn: $showInactive)
+                .toggleStyle(.switch)
+                .labelsHidden()
+            Text("Show retired")
+                .font(Typo.sans(12))
+                .foregroundStyle(Color.lInk2)
+            PrimaryButton(action: { creatingNew = true }) {
+                HStack(spacing: 5) {
+                    Image(systemName: "plus").font(.system(size: 10, weight: .bold))
+                    Text("New Account")
+                }
+            }
+        }
+    }
+
+    private var tablePanel: some View {
+        Panel {
+            VStack(spacing: 0) {
+                PanelHead(title: "All accounts", meta: "\(visible.count) visible")
+                rowHeader
+                ScrollView(.vertical) {
+                    LazyVStack(spacing: 0) {
+                        ForEach(Array(visible.enumerated()), id: \.element.id) { idx, a in
+                            row(a, idx: idx)
+                            if idx < visible.count - 1 {
+                                Divider().overlay(Color.lLine)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .frame(maxHeight: .infinity)
+    }
+
+    private var rowHeader: some View {
+        HStack {
+            Text("Name").frame(maxWidth: .infinity, alignment: .leading)
+            Text("Person").frame(width: 120, alignment: .leading)
+            Text("Country").frame(width: 90, alignment: .leading)
+            Text("Type").frame(width: 140, alignment: .leading)
+            Text("Ccy").frame(width: 50, alignment: .leading)
+            Text("Status").frame(width: 90, alignment: .leading)
+            Text("").frame(width: 160)
+        }
+        .font(Typo.eyebrow).tracking(1.2).foregroundStyle(Color.lInk3)
+        .padding(.horizontal, 18).padding(.vertical, 10)
+        .background(Color.lSunken)
+        .overlay(Rectangle().frame(height: 1).foregroundStyle(Color.lLine), alignment: .bottom)
+    }
+
+    private func row(_ a: Account, idx: Int) -> some View {
+        HStack {
+            Text(a.name)
+                .font(Typo.sans(13, weight: .medium))
+                .foregroundStyle(Color.lInk)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            HStack(spacing: 6) {
+                if let p = a.person {
+                    Avatar(text: String(p.name.prefix(1)),
+                           color: Color.fromHex(p.colorHex) ?? Palette.fallback(for: p.name),
+                           size: 18)
+                    Text(p.name)
+                        .font(Typo.sans(12))
+                        .foregroundStyle(Color.lInk2)
+                } else {
+                    Text("—").foregroundStyle(Color.lInk3)
+                }
+            }
+            .frame(width: 120, alignment: .leading)
+
+            HStack(spacing: 4) {
+                Text(a.country?.flag ?? "")
+                    .font(.system(size: 14))
+                Text(a.country?.code ?? "—")
+                    .font(Typo.mono(11))
+                    .foregroundStyle(Color.lInk2)
+            }
+            .frame(width: 90, alignment: .leading)
+
+            Text(a.assetType?.name ?? "—")
+                .font(Typo.sans(12))
+                .foregroundStyle(Color.lInk2)
+                .frame(width: 140, alignment: .leading)
+
+            Text(a.nativeCurrency.rawValue)
+                .font(Typo.mono(11))
+                .foregroundStyle(Color.lInk3)
+                .frame(width: 50, alignment: .leading)
+
+            Pill(text: a.isActive ? "active" : "retired", emphasis: a.isActive)
+                .frame(width: 90, alignment: .leading)
+
+            HStack(spacing: 6) {
+                GhostButton(action: { historyAccount = a }) {
+                    Image(systemName: "chart.line.uptrend.xyaxis")
+                        .font(.system(size: 10, weight: .bold))
+                }
+                GhostButton(action: { editing = a }) { Text("Edit") }
+                Menu {
+                    Button("Show History") { historyAccount = a }
+                    Button(a.isActive ? "Retire" : "Reactivate") {
+                        a.isActive.toggle()
+                        try? context.save()
+                    }
+                    Button("Delete…", role: .destructive) {
+                        confirmDelete = a
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Color.lInk2)
+                        .frame(width: 24, height: 24)
+                        .overlay(Circle().stroke(Color.lLine, lineWidth: 1))
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize()
+            }
+            .frame(width: 160, alignment: .trailing)
+        }
+        .padding(.horizontal, 18).padding(.vertical, 10)
+        .background(idx.isMultiple(of: 2) ? Color.clear : Color.lSunken.opacity(0.5))
+        .contentShape(Rectangle())
+        .onTapGesture(count: 2) { historyAccount = a }
     }
 }

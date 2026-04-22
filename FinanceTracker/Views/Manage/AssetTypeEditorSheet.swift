@@ -12,7 +12,7 @@ struct AssetTypeEditorSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text(existing == nil ? "New Asset Type" : "Edit Asset Type").font(.title2.bold())
+            Text(existing == nil ? "New Asset Type" : "Edit Asset Type").font(Typo.serifNum(24))
             Form {
                 TextField("Name", text: $name)
                 Picker("Category", selection: $category) {

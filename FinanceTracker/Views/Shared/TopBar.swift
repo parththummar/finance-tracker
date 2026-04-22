@@ -16,90 +16,57 @@ struct TopBar: View {
     }
 
     var body: some View {
-        HStack(spacing: 12) {
-            Picker("", selection: Binding(
-                get: { app.displayCurrency },
-                set: { app.displayCurrency = $0 }
-            )) {
-                ForEach(Currency.allCases) { Text($0.rawValue).tag($0) }
-            }
-            .labelsHidden()
-            .frame(width: 80)
+        HStack(spacing: 10) {
+            crumbs
 
-            Picker("", selection: Binding(
-                get: { app.activeSnapshotID ?? snapshots.first?.id ?? UUID() },
-                set: { app.activeSnapshotID = $0 }
-            )) {
-                ForEach(snapshots) { Text($0.label).tag($0.id) }
-            }
-            .labelsHidden()
-            .frame(width: 140)
+            Spacer(minLength: 12)
 
-            Button {
-                showingNewSnapshot = true
-            } label: {
-                Label("New Snapshot", systemImage: "plus")
+            if !snapshots.isEmpty {
+                snapshotChip
             }
+
+            SegControl<Currency>(
+                options: Currency.allCases.map { (label: $0.rawValue, value: $0) },
+                selection: Binding(
+                    get: { app.displayCurrency },
+                    set: { app.displayCurrency = $0 }
+                )
+            )
+
+            SegControl<AppTheme>(
+                options: [("●", .system), ("☼", .light), ("☾", .dark)],
+                selection: Binding(
+                    get: { app.theme },
+                    set: { app.theme = $0 }
+                )
+            )
 
             Menu {
-                Button("Full history CSV") {
-                    pendingExport = PendingExport(
-                        document: CSVDocument(text: CSVExporter.flatAssetValues(snapshots: snapshots)),
-                        defaultFilename: "finance_history_\(datestamp()).csv"
-                    )
-                }
-                Button("Accounts list CSV") {
-                    pendingExport = PendingExport(
-                        document: CSVDocument(text: CSVExporter.accounts(accounts)),
-                        defaultFilename: "finance_accounts_\(datestamp()).csv"
-                    )
-                }
-                Button("Snapshot totals CSV") {
-                    pendingExport = PendingExport(
-                        document: CSVDocument(text: CSVExporter.snapshotTotals(snapshots: snapshots)),
-                        defaultFilename: "finance_totals_\(datestamp()).csv"
-                    )
-                }
+                Button("Full history CSV") { exportHistory() }
+                Button("Accounts list CSV") { exportAccounts() }
+                Button("Snapshot totals CSV") { exportTotals() }
             } label: {
-                Label("Export", systemImage: "square.and.arrow.up")
+                Image(systemName: "square.and.arrow.up")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Color.lInk2)
+                    .frame(width: 28, height: 28)
+                    .overlay(Circle().stroke(Color.lLine, lineWidth: 1))
             }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
 
-            Spacer()
-
-            HStack(spacing: 6) {
-                Text("Labels:").foregroundStyle(.secondary)
-                Picker("", selection: Binding(
-                    get: { app.labelMode },
-                    set: { app.labelMode = $0 }
-                )) {
-                    Text("$").tag(LabelMode.dollar)
-                    Text("%").tag(LabelMode.percent)
-                    Text("Both").tag(LabelMode.both)
+            PrimaryButton(action: { showingNewSnapshot = true }) {
+                HStack(spacing: 5) {
+                    Image(systemName: "plus").font(.system(size: 10, weight: .bold))
+                    Text("New Snapshot")
                 }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .frame(width: 180)
             }
-
-            if let snap = activeSnapshot, snap.isLocked {
-                Label("Locked", systemImage: "lock.fill")
-                    .foregroundStyle(.secondary)
-            }
-
-            Picker("", selection: Binding(
-                get: { app.theme },
-                set: { app.theme = $0 }
-            )) {
-                Image(systemName: "circle.lefthalf.filled").tag(AppTheme.system)
-                Image(systemName: "sun.max.fill").tag(AppTheme.light)
-                Image(systemName: "moon.fill").tag(AppTheme.dark)
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .frame(width: 120)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 22)
+        .padding(.vertical, 12)
+        .background(Color.lBg)
+        .overlay(Rectangle().frame(height: 1).foregroundStyle(Color.lLine), alignment: .bottom)
         .sheet(isPresented: $showingNewSnapshot) {
             NewSnapshotSheet { created in
                 app.activeSnapshotID = created.id
@@ -118,14 +85,88 @@ struct TopBar: View {
         }
     }
 
-    private func datestamp() -> String {
-        let f = DateFormatter()
-        f.dateFormat = "yyyy-MM-dd"
-        return f.string(from: Date())
+    private var crumbs: some View {
+        HStack(spacing: 6) {
+            Text("Ledgerly")
+                .font(Typo.sans(12))
+                .foregroundStyle(Color.lInk3)
+            Text("/")
+                .font(Typo.sans(12))
+                .foregroundStyle(Color.lInk4)
+            Text(screenTitle)
+                .font(Typo.sans(12, weight: .semibold))
+                .foregroundStyle(Color.lInk)
+        }
     }
 
-    private var activeSnapshot: Snapshot? {
-        guard let id = app.activeSnapshotID else { return snapshots.first }
-        return snapshots.first { $0.id == id }
+    private var snapshotChip: some View {
+        HStack(spacing: 6) {
+            Text("As of")
+                .font(Typo.mono(10.5))
+                .foregroundStyle(Color.lInk3)
+            Menu {
+                ForEach(snapshots) { s in
+                    Button(s.label) { app.activeSnapshotID = s.id }
+                }
+            } label: {
+                HStack(spacing: 4) {
+                    Text(activeLabel)
+                        .font(Typo.mono(11, weight: .semibold))
+                        .foregroundStyle(Color.lInk)
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(Color.lInk3)
+                }
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .overlay(Capsule().stroke(Color.lLine, lineWidth: 1))
+    }
+
+    private var activeLabel: String {
+        if let id = app.activeSnapshotID, let s = snapshots.first(where: { $0.id == id }) {
+            return s.label
+        }
+        return snapshots.first?.label ?? "—"
+    }
+
+    private var screenTitle: String {
+        switch app.selectedScreen {
+        case .dashboard:  return "Net Worth"
+        case .breakdown:  return "Allocation"
+        case .snapshots:  return "Historical"
+        case .accounts:   return "All Assets"
+        case .people:     return "By Person"
+        case .countries:  return "By Country"
+        case .assetTypes: return "By Asset Type"
+        case .settings:   return "Settings"
+        }
+    }
+
+    private func datestamp() -> String {
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"
+        return f.string(from: Date())
+    }
+    private func exportHistory() {
+        pendingExport = PendingExport(
+            document: CSVDocument(text: CSVExporter.flatAssetValues(snapshots: snapshots)),
+            defaultFilename: "finance_history_\(datestamp()).csv"
+        )
+    }
+    private func exportAccounts() {
+        pendingExport = PendingExport(
+            document: CSVDocument(text: CSVExporter.accounts(accounts)),
+            defaultFilename: "finance_accounts_\(datestamp()).csv"
+        )
+    }
+    private func exportTotals() {
+        pendingExport = PendingExport(
+            document: CSVDocument(text: CSVExporter.snapshotTotals(snapshots: snapshots)),
+            defaultFilename: "finance_totals_\(datestamp()).csv"
+        )
     }
 }

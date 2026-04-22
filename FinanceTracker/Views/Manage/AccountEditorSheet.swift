@@ -22,7 +22,7 @@ struct AccountEditorSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text(existing == nil ? "New Account" : "Edit Account").font(.title2.bold())
+            Text(existing == nil ? "New Account" : "Edit Account").font(Typo.serifNum(24))
 
             Form {
                 TextField("Name", text: $name)

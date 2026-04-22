@@ -6,8 +6,10 @@ struct AccountHistoryView: View {
     @EnvironmentObject var app: AppState
     let account: Account
     @State private var showInNative: Bool = true
+    @State private var points: [Point] = []
+    @State private var loaded: Bool = false
 
-    private struct Point: Identifiable {
+    fileprivate struct Point: Identifiable {
         let id = UUID()
         let date: Date
         let label: String
@@ -16,18 +18,25 @@ struct AccountHistoryView: View {
         let currency: Currency
     }
 
-    private var points: [Point] {
-        let vals = account.values.compactMap { v -> Point? in
+    private func computePoints() -> [Point] {
+        let target = app.displayCurrency
+        let native = account.nativeCurrency
+        return account.values.compactMap { v -> Point? in
             guard let s = v.snapshot else { return nil }
+            let display = CurrencyConverter.convert(
+                nativeValue: v.nativeValue,
+                from: native,
+                to: target,
+                usdToInrRate: s.usdToInrRate
+            )
             return Point(
                 date: s.date,
                 label: s.label,
                 native: v.nativeValue,
-                display: CurrencyConverter.displayValue(for: v, in: app.displayCurrency),
-                currency: account.nativeCurrency
+                display: display,
+                currency: native
             )
-        }
-        return vals.sorted { $0.date < $1.date }
+        }.sorted { $0.date < $1.date }
     }
 
     private var delta: (abs: Double, pct: Double)? {
@@ -35,149 +44,203 @@ struct AccountHistoryView: View {
         let a = showInNative ? first.native : first.display
         let b = showInNative ? last.native : last.display
         guard a != 0 else { return nil }
-        return (b - a, (b - a) / a)
+        return (b - a, (b - a) / abs(a))
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 18) {
             header
-
-            if points.count < 2 {
-                Card {
+            if !loaded {
+                Panel {
+                    ProgressView()
+                        .padding(40)
+                        .frame(maxWidth: .infinity)
+                }
+            } else if points.count < 2 {
+                Panel {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Not enough history.")
-                            .font(.headline)
-                        Text("Account has \(points.count) snapshot value(s). Need at least 2 to chart.")
-                            .font(.caption).foregroundStyle(.secondary)
+                            .font(Typo.sans(15, weight: .semibold))
+                        Text("Account has \(points.count) snapshot value(s). Need 2+ to chart.")
+                            .font(Typo.serifItalic(13))
+                            .foregroundStyle(Color.lInk3)
                     }
+                    .padding(20)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
             } else {
-                Card { chart }
-                Card { table }
+                Panel { chartSection }
+                Panel { tableSection }
             }
 
             HStack {
                 Spacer()
-                Button("Close") { dismiss() }.keyboardShortcut(.defaultAction)
+                GhostButton(action: { dismiss() }) { Text("Close") }
+                    .keyboardShortcut(.defaultAction)
             }
         }
         .padding(24)
-        .frame(minWidth: 800, minHeight: 600)
+        .frame(minWidth: 820, minHeight: 620)
+        .background(Color.lBg)
+        .onAppear {
+            guard !loaded else { return }
+            points = computePoints()
+            loaded = true
+        }
     }
 
     private var header: some View {
-        Card {
-            VStack(alignment: .leading, spacing: 6) {
+        Panel {
+            VStack(alignment: .leading, spacing: 10) {
                 HStack {
-                    Text(account.name).font(.title2.bold())
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("ACCOUNT HISTORY")
+                            .font(Typo.eyebrow).tracking(1.5).foregroundStyle(Color.lInk3)
+                        Text(account.name)
+                            .font(Typo.serifNum(26))
+                            .foregroundStyle(Color.lInk)
+                    }
                     Spacer()
                     if account.nativeCurrency != app.displayCurrency {
-                        Picker("", selection: $showInNative) {
-                            Text(account.nativeCurrency.rawValue).tag(true)
-                            Text(app.displayCurrency.rawValue).tag(false)
-                        }
-                        .pickerStyle(.segmented)
-                        .frame(width: 140)
+                        SegControl<Bool>(
+                            options: [
+                                (account.nativeCurrency.rawValue, true),
+                                (app.displayCurrency.rawValue, false),
+                            ],
+                            selection: $showInNative
+                        )
                     } else {
-                        Text(account.nativeCurrency.rawValue)
-                            .font(.caption)
-                            .padding(.horizontal, 8).padding(.vertical, 4)
-                            .background(.secondary.opacity(0.15), in: Capsule())
+                        Pill(text: account.nativeCurrency.rawValue)
                     }
                 }
-                HStack(spacing: 16) {
-                    if let p = account.person { Text("Person: \(p.name)").foregroundStyle(.secondary) }
-                    if let c = account.country { Text("Country: \(c.flag) \(c.name)").foregroundStyle(.secondary) }
-                    if let t = account.assetType { Text("Type: \(t.name)").foregroundStyle(.secondary) }
+                HStack(spacing: 14) {
+                    if let p = account.person {
+                        HStack(spacing: 5) {
+                            Avatar(text: String(p.name.prefix(1)),
+                                   color: Color.fromHex(p.colorHex) ?? Palette.fallback(for: p.name),
+                                   size: 18)
+                            Text(p.name).font(Typo.sans(12))
+                        }
+                        .foregroundStyle(Color.lInk2)
+                    }
+                    if let c = account.country {
+                        Text("\(c.flag) \(c.name)")
+                            .font(Typo.sans(12))
+                            .foregroundStyle(Color.lInk2)
+                    }
+                    if let t = account.assetType {
+                        Text(t.name)
+                            .font(Typo.sans(12))
+                            .foregroundStyle(Color.lInk2)
+                    }
                 }
-                .font(.caption)
 
                 if let d = delta {
                     let ccy: Currency = showInNative ? account.nativeCurrency : app.displayCurrency
                     HStack(spacing: 8) {
-                        Text("Total change:")
+                        Text("Total change")
+                            .font(Typo.eyebrow).tracking(1.2)
+                            .foregroundStyle(Color.lInk3)
                         Text(Fmt.signedDelta(d.abs, ccy))
+                            .font(Typo.mono(13, weight: .semibold))
                             .foregroundStyle(Palette.deltaColor(d.abs))
-                        Text("(\(Fmt.percent(d.pct)))")
+                        Text("(\(String(format: "%+.1f%%", d.pct * 100)))")
+                            .font(Typo.mono(12))
                             .foregroundStyle(Palette.deltaColor(d.abs))
                     }
-                    .font(.callout.monospacedDigit())
                 }
             }
+            .padding(20)
         }
     }
 
-    private var chart: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("VALUE OVER TIME").font(.caption).foregroundStyle(.secondary)
+    private var chartSection: some View {
+        VStack(spacing: 0) {
+            PanelHead(title: "Value over time", meta: "\(points.count) snapshots")
             Chart(points) { p in
-                LineMark(
-                    x: .value("Date", p.date),
-                    y: .value("Value", showInNative ? p.native : p.display)
-                )
-                .interpolationMethod(.catmullRom)
-                .foregroundStyle(Palette.up)
-                .lineStyle(StrokeStyle(lineWidth: 2.5))
-
                 AreaMark(
                     x: .value("Date", p.date),
                     y: .value("Value", showInNative ? p.native : p.display)
                 )
                 .interpolationMethod(.catmullRom)
-                .foregroundStyle(LinearGradient(
-                    colors: [Palette.up.opacity(0.25), Palette.up.opacity(0)],
+                .foregroundStyle(.linearGradient(
+                    colors: [Color.lInk.opacity(0.14), Color.lInk.opacity(0.01)],
                     startPoint: .top, endPoint: .bottom
                 ))
-
+                LineMark(
+                    x: .value("Date", p.date),
+                    y: .value("Value", showInNative ? p.native : p.display)
+                )
+                .interpolationMethod(.catmullRom)
+                .foregroundStyle(Color.lInk)
+                .lineStyle(StrokeStyle(lineWidth: 1.8, lineCap: .round, lineJoin: .round))
                 PointMark(
                     x: .value("Date", p.date),
                     y: .value("Value", showInNative ? p.native : p.display)
                 )
-                .foregroundStyle(Palette.up)
-                .symbolSize(40)
+                .foregroundStyle(Color.lInk)
+                .symbolSize(24)
             }
             .chartYAxis {
-                AxisMarks(position: .leading)
+                AxisMarks(position: .leading) { _ in
+                    AxisGridLine().foregroundStyle(Color.lLine)
+                    AxisValueLabel().font(Typo.mono(10)).foregroundStyle(Color.lInk3)
+                }
             }
-            .frame(height: 320)
+            .chartXAxis {
+                AxisMarks { _ in
+                    AxisValueLabel().font(Typo.mono(10)).foregroundStyle(Color.lInk3)
+                }
+            }
+            .frame(height: 300)
+            .padding(18)
         }
     }
 
-    private var table: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("SNAPSHOTS — \(points.count)").font(.caption).foregroundStyle(.secondary)
-                Spacer()
-            }
-            Divider()
-            let rows = points.reversed().map { $0 }
-            ForEach(Array(rows.enumerated()), id: \.element.id) { idx, p in
+    private var tableSection: some View {
+        VStack(spacing: 0) {
+            PanelHead(title: "Snapshots", meta: "\(points.count)")
+            VStack(spacing: 0) {
                 HStack {
-                    Text(p.label).frame(width: 180, alignment: .leading)
-                    Spacer()
-                    Text(Fmt.currency(showInNative ? p.native : p.display,
-                                      showInNative ? p.currency : app.displayCurrency))
-                        .font(.body.monospacedDigit())
-                        .frame(width: 160, alignment: .trailing)
-                    if let prev = rows.dropFirst(idx + 1).first {
-                        let prevVal = showInNative ? prev.native : prev.display
-                        let curVal = showInNative ? p.native : p.display
-                        let diff = curVal - prevVal
-                        Text(Fmt.signedDelta(diff, showInNative ? p.currency : app.displayCurrency))
-                            .foregroundStyle(Palette.deltaColor(diff))
-                            .font(.caption.monospacedDigit())
-                            .frame(width: 140, alignment: .trailing)
-                    } else {
-                        Text("—").foregroundStyle(.secondary)
-                            .font(.caption)
-                            .frame(width: 140, alignment: .trailing)
-                    }
+                    Text("Snapshot").frame(maxWidth: .infinity, alignment: .leading)
+                    Text("Value").frame(width: 160, alignment: .trailing)
+                    Text("Δ").frame(width: 140, alignment: .trailing)
                 }
-                .padding(.horizontal, 6)
-                .padding(.vertical, 4)
-                .background(idx.isMultiple(of: 2) ? Color.clear : Color.secondary.opacity(0.08))
-                .clipShape(RoundedRectangle(cornerRadius: 4))
+                .font(Typo.eyebrow).tracking(1.2)
+                .foregroundStyle(Color.lInk3)
+                .padding(.horizontal, 18).padding(.vertical, 10)
+                .background(Color.lSunken)
+                .overlay(Rectangle().frame(height: 1).foregroundStyle(Color.lLine), alignment: .bottom)
+
+                let rows = points.reversed().map { $0 }
+                ForEach(Array(rows.enumerated()), id: \.element.id) { idx, p in
+                    HStack {
+                        Text(p.label)
+                            .font(Typo.sans(12.5, weight: .medium))
+                            .foregroundStyle(Color.lInk)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Text(Fmt.currency(showInNative ? p.native : p.display,
+                                          showInNative ? p.currency : app.displayCurrency))
+                            .font(Typo.mono(12.5, weight: .medium))
+                            .frame(width: 160, alignment: .trailing)
+                        if let prev = rows.dropFirst(idx + 1).first {
+                            let prevVal = showInNative ? prev.native : prev.display
+                            let curVal = showInNative ? p.native : p.display
+                            let diff = curVal - prevVal
+                            Text(Fmt.signedDelta(diff, showInNative ? p.currency : app.displayCurrency))
+                                .font(Typo.mono(11, weight: .medium))
+                                .foregroundStyle(Palette.deltaColor(diff))
+                                .frame(width: 140, alignment: .trailing)
+                        } else {
+                            Text("—").foregroundStyle(Color.lInk4)
+                                .font(Typo.mono(11))
+                                .frame(width: 140, alignment: .trailing)
+                        }
+                    }
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 10)
+                    .background(idx.isMultiple(of: 2) ? Color.clear : Color.lSunken.opacity(0.5))
+                }
             }
         }
     }

@@ -1,15 +1,189 @@
 import SwiftUI
 import AppKit
+import CoreText
+
+// MARK: - oklch → sRGB
+
+enum Oklch {
+    static func srgb(_ L: Double, _ C: Double, _ hDeg: Double) -> Color {
+        let h = hDeg * .pi / 180
+        let a = C * cos(h)
+        let b = C * sin(h)
+
+        let l_ = L + 0.3963377774 * a + 0.2158037573 * b
+        let m_ = L - 0.1055613458 * a - 0.0638541728 * b
+        let s_ = L - 0.0894841775 * a - 1.2914855480 * b
+
+        let l = l_ * l_ * l_
+        let m = m_ * m_ * m_
+        let s = s_ * s_ * s_
+
+        let r  =  4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s
+        let g  = -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s
+        let b2 = -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s
+
+        return Color(.sRGB, red: gamma(r), green: gamma(g), blue: gamma(b2), opacity: 1)
+    }
+
+    private static func gamma(_ x: Double) -> Double {
+        let v = max(0, min(1, x))
+        return v <= 0.0031308 ? 12.92 * v : 1.055 * pow(v, 1.0 / 2.4) - 0.055
+    }
+}
+
+// MARK: - Ledgerly palette (light + dark aware)
+
+enum Ink {
+    static let bg        = DualColor(light: Oklch.srgb(0.985, 0.004, 85),  dark: Oklch.srgb(0.16,  0.008, 270))
+    static let bg2       = DualColor(light: Oklch.srgb(0.975, 0.005, 85),  dark: Oklch.srgb(0.185, 0.008, 270))
+    static let bgPanel   = DualColor(light: Color.white,                    dark: Oklch.srgb(0.205, 0.009, 270))
+    static let bgSunken  = DualColor(light: Oklch.srgb(0.965, 0.006, 85),  dark: Oklch.srgb(0.14,  0.008, 270))
+
+    static let line       = DualColor(light: Oklch.srgb(0.90, 0.006, 85),  dark: Oklch.srgb(0.28, 0.010, 270))
+    static let lineStrong = DualColor(light: Oklch.srgb(0.82, 0.008, 85),  dark: Oklch.srgb(0.36, 0.012, 270))
+
+    static let ink  = DualColor(light: Oklch.srgb(0.18, 0.010, 270), dark: Oklch.srgb(0.97, 0.004, 85))
+    static let ink2 = DualColor(light: Oklch.srgb(0.38, 0.012, 270), dark: Oklch.srgb(0.82, 0.006, 85))
+    static let ink3 = DualColor(light: Oklch.srgb(0.58, 0.010, 270), dark: Oklch.srgb(0.62, 0.008, 85))
+    static let ink4 = DualColor(light: Oklch.srgb(0.72, 0.008, 270), dark: Oklch.srgb(0.45, 0.010, 85))
+
+    static let gain     = DualColor(light: Oklch.srgb(0.58, 0.13, 155), dark: Oklch.srgb(0.75, 0.15, 155))
+    static let gainSoft = DualColor(light: Oklch.srgb(0.92, 0.05, 155), dark: Oklch.srgb(0.30, 0.06, 155))
+    static let loss     = DualColor(light: Oklch.srgb(0.55, 0.17, 25),  dark: Oklch.srgb(0.72, 0.16, 25))
+    static let lossSoft = DualColor(light: Oklch.srgb(0.93, 0.05, 25),  dark: Oklch.srgb(0.30, 0.08, 25))
+
+    static let accent = DualColor(light: Oklch.srgb(0.45, 0.08, 250), dark: Oklch.srgb(0.75, 0.10, 250))
+
+    static let chart: [DualColor] = [
+        DualColor(light: Oklch.srgb(0.24, 0.03, 260), dark: Oklch.srgb(0.92, 0.006, 85)),
+        DualColor(light: Oklch.srgb(0.55, 0.12, 155), dark: Oklch.srgb(0.72, 0.14,  155)),
+        DualColor(light: Oklch.srgb(0.62, 0.14, 60),  dark: Oklch.srgb(0.78, 0.14,  60)),
+        DualColor(light: Oklch.srgb(0.55, 0.13, 25),  dark: Oklch.srgb(0.72, 0.15,  25)),
+        DualColor(light: Oklch.srgb(0.50, 0.10, 280), dark: Oklch.srgb(0.70, 0.12,  280)),
+        DualColor(light: Oklch.srgb(0.62, 0.08, 200), dark: Oklch.srgb(0.75, 0.08,  200)),
+        DualColor(light: Oklch.srgb(0.70, 0.02, 85),  dark: Oklch.srgb(0.55, 0.02,  85)),
+    ]
+}
+
+struct DualColor {
+    let light: Color
+    let dark: Color
+    var color: Color {
+        Color(nsColor: NSColor(name: nil) { appearance in
+            let isDark = appearance.bestMatch(from: [.darkAqua, .vibrantDark, .accessibilityHighContrastDarkAqua, .accessibilityHighContrastVibrantDark]) != nil
+            return NSColor(isDark ? dark : light)
+        })
+    }
+}
+
+extension Color {
+    static var lBg: Color         { Ink.bg.color }
+    static var lBg2: Color        { Ink.bg2.color }
+    static var lPanel: Color      { Ink.bgPanel.color }
+    static var lSunken: Color     { Ink.bgSunken.color }
+    static var lLine: Color       { Ink.line.color }
+    static var lLineStrong: Color { Ink.lineStrong.color }
+    static var lInk: Color        { Ink.ink.color }
+    static var lInk2: Color       { Ink.ink2.color }
+    static var lInk3: Color       { Ink.ink3.color }
+    static var lInk4: Color       { Ink.ink4.color }
+    static var lGain: Color       { Ink.gain.color }
+    static var lGainSoft: Color   { Ink.gainSoft.color }
+    static var lLoss: Color       { Ink.loss.color }
+    static var lLossSoft: Color   { Ink.lossSoft.color }
+    static var lAccent: Color     { Ink.accent.color }
+}
+
+// MARK: - Fonts (Geist + Geist Mono + Instrument Serif)
+
+enum Typo {
+    static let sans    = "Geist"
+    static let sansMed = "Geist-Medium"
+    static let sansSB  = "Geist-SemiBold"
+    static let sansB   = "Geist-Bold"
+    static let mono    = "GeistMono-Regular"
+    static let monoMed = "GeistMono-Medium"
+    static let monoSB  = "GeistMono-SemiBold"
+    static let serif   = "InstrumentSerif-Regular"
+    static let serifIt = "InstrumentSerif-Italic"
+
+    static func serifNum(_ size: CGFloat) -> Font {
+        .custom(serif, size: size).weight(.regular)
+    }
+    static func mono(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
+        let name: String
+        switch weight {
+        case .medium:   name = monoMed
+        case .semibold: name = monoSB
+        case .bold:     name = monoSB
+        default:        name = mono
+        }
+        return .custom(name, size: size)
+    }
+    static func sans(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
+        let name: String
+        switch weight {
+        case .medium:   name = sansMed
+        case .semibold: name = sansSB
+        case .bold:     name = sansB
+        default:        name = sans
+        }
+        return .custom(name, size: size)
+    }
+    static func serifItalic(_ size: CGFloat) -> Font {
+        .custom(serifIt, size: size)
+    }
+
+    /// eyebrow: tiny uppercase mono label
+    static let eyebrow    = Font.custom(mono, size: 10).weight(.medium)
+    static let label      = Font.custom(mono, size: 11).weight(.medium)
+    static let bodySans   = Font.custom(sans, size: 13)
+    static let bodyMono   = Font.custom(mono, size: 12)
+}
+
+// MARK: - Font registrar
+
+enum FontRegistrar {
+    private static var registered = false
+
+    static func registerIfNeeded() {
+        guard !registered else { return }
+        registered = true
+        let names = [
+            "Geist-Regular", "Geist-Medium", "Geist-SemiBold", "Geist-Bold",
+            "GeistMono-Regular", "GeistMono-Medium", "GeistMono-SemiBold",
+            "InstrumentSerif-Regular", "InstrumentSerif-Italic",
+        ]
+        let bundle = Bundle.main
+        for name in names {
+            guard let url = bundle.url(forResource: name, withExtension: "ttf", subdirectory: "Fonts")
+                       ?? bundle.url(forResource: name, withExtension: "ttf") else {
+                print("[FontRegistrar] missing: \(name).ttf")
+                continue
+            }
+            var err: Unmanaged<CFError>?
+            if !CTFontManagerRegisterFontsForURL(url as CFURL, .process, &err) {
+                if let e = err?.takeRetainedValue() {
+                    let code = CFErrorGetCode(e)
+                    // 105 = already registered — fine
+                    if code != 105 { print("[FontRegistrar] \(name): \(e)") }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Legacy palette (kept so old views still compile until replaced)
 
 enum Palette {
     static func defaultColor(for category: AssetCategory) -> Color {
         switch category {
-        case .retirement: return Color(red: 0.23, green: 0.51, blue: 0.96)
-        case .investment: return Color(red: 0.08, green: 0.72, blue: 0.65)
-        case .cash:       return Color(red: 0.96, green: 0.62, blue: 0.04)
-        case .crypto:     return Color(red: 0.55, green: 0.36, blue: 0.96)
-        case .insurance:  return Color(red: 0.42, green: 0.45, blue: 0.50)
-        case .debt:       return Color(red: 0.96, green: 0.25, blue: 0.37)
+        case .retirement: return Ink.chart[4].color
+        case .investment: return Ink.chart[1].color
+        case .cash:       return Ink.chart[2].color
+        case .crypto:     return Ink.chart[5].color
+        case .insurance:  return Ink.chart[6].color
+        case .debt:       return Ink.chart[3].color
         }
     }
 
@@ -18,17 +192,31 @@ enum Palette {
     }
 
     static func fallback(for key: String) -> Color {
-        let colors: [Color] = [.blue, .orange, .teal, .purple, .pink, .green, .red, .yellow]
-        return colors[abs(key.hashValue) % colors.count]
+        Ink.chart[abs(key.hashValue) % Ink.chart.count].color
     }
 
-    static let up   = Color(red: 0.13, green: 0.64, blue: 0.29)
-    static let down = Color(red: 0.86, green: 0.15, blue: 0.15)
+    static func unusedFallback(taken: [String]) -> Color {
+        let takenSet = Set(taken.compactMap { $0.isEmpty ? nil : $0.lowercased() })
+        let available = Ink.chart.filter { dc in
+            let lh = dc.light.toHex()?.lowercased()
+            let dh = dc.dark.toHex()?.lowercased()
+            if let lh, takenSet.contains(lh) { return false }
+            if let dh, takenSet.contains(dh) { return false }
+            return true
+        }
+        let pool = available.isEmpty ? Ink.chart : available
+        return pool.randomElement()!.color
+    }
+
+    static var up:   Color { Ink.gain.color }
+    static var down: Color { Ink.loss.color }
 
     static func deltaColor(_ value: Double) -> Color {
         value >= 0 ? up : down
     }
 }
+
+// MARK: - Hex helpers
 
 extension Color {
     static func fromHex(_ hex: String?) -> Color? {
@@ -65,16 +253,18 @@ enum CategoryColorStore {
     }
 }
 
+// MARK: - Legacy Card (kept; new code uses Panel)
+
 struct Card<Content: View>: View {
     let content: () -> Content
     init(@ViewBuilder _ content: @escaping () -> Content) { self.content = content }
     var body: some View {
         content()
             .padding(16)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+            .background(Color.lPanel, in: RoundedRectangle(cornerRadius: 12))
             .overlay(
                 RoundedRectangle(cornerRadius: 12)
-                    .stroke(Color.gray.opacity(0.15), lineWidth: 1)
+                    .stroke(Color.lLine, lineWidth: 1)
             )
     }
 }
