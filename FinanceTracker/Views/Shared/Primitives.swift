@@ -42,6 +42,96 @@ struct PanelHead: View {
     }
 }
 
+// MARK: - Editorial empty state
+
+struct EditorialEmpty: View {
+    let eyebrow: String
+    let title: String
+    let titleItalic: String?
+    let message: String
+    let detail: String?
+    let ctaLabel: String?
+    let cta: (() -> Void)?
+    let secondaryLabel: String?
+    let secondary: (() -> Void)?
+
+    init(eyebrow: String,
+         title: String,
+         titleItalic: String? = nil,
+         body: String,
+         detail: String? = nil,
+         ctaLabel: String? = nil,
+         cta: (() -> Void)? = nil,
+         secondaryLabel: String? = nil,
+         secondary: (() -> Void)? = nil) {
+        self.eyebrow = eyebrow
+        self.title = title
+        self.titleItalic = titleItalic
+        self.message = body
+        self.detail = detail
+        self.ctaLabel = ctaLabel
+        self.cta = cta
+        self.secondaryLabel = secondaryLabel
+        self.secondary = secondary
+    }
+
+    var body: some View {
+        Panel {
+            HStack(alignment: .top, spacing: 28) {
+                VStack(alignment: .leading, spacing: 14) {
+                    Text(eyebrow)
+                        .font(Typo.eyebrow).tracking(1.5)
+                        .textCase(.uppercase)
+                        .foregroundStyle(Color.lInk3)
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text(title).font(Typo.serifNum(34))
+                            .foregroundStyle(Color.lInk)
+                        if let titleItalic {
+                            Text(titleItalic).font(Typo.serifItalic(34))
+                                .foregroundStyle(Color.lInk3)
+                        }
+                    }
+                    Text(message)
+                        .font(Typo.serifItalic(15))
+                        .foregroundStyle(Color.lInk2)
+                        .lineSpacing(4)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: 520, alignment: .leading)
+                    if let detail {
+                        Text(detail)
+                            .font(Typo.mono(11))
+                            .tracking(0.4)
+                            .foregroundStyle(Color.lInk3)
+                            .padding(.top, 2)
+                    }
+                    HStack(spacing: 10) {
+                        if let ctaLabel, let cta {
+                            PrimaryButton(action: cta) {
+                                HStack(spacing: 5) {
+                                    Image(systemName: "plus").font(.system(size: 10, weight: .bold))
+                                    Text(ctaLabel)
+                                }
+                            }
+                        }
+                        if let secondaryLabel, let secondary {
+                            GhostButton(action: secondary) { Text(secondaryLabel) }
+                        }
+                    }
+                    .padding(.top, 6)
+                }
+                Spacer(minLength: 0)
+                Text("—")
+                    .font(.custom(Typo.serif, size: 64))
+                    .foregroundStyle(Color.lInk3.opacity(0.35))
+                    .padding(.trailing, 4)
+            }
+            .padding(.horizontal, 28)
+            .padding(.vertical, 26)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}
+
 // MARK: - SectionHead (page-level)
 
 struct SectionHead: View {
@@ -154,6 +244,7 @@ struct AllocRow: View {
     let pct: Double
     var showBar: Bool = false
     var valueColor: Color = .lInk
+    var targetPct: Double? = nil
 
     var body: some View {
         VStack(spacing: 5) {
@@ -165,6 +256,9 @@ struct AllocRow: View {
                     .font(Typo.sans(13, weight: .medium))
                     .foregroundStyle(Color.lInk)
                 Spacer()
+                if let targetPct {
+                    VarianceChip(actual: pct, target: targetPct)
+                }
                 Text(value)
                     .font(Typo.sans(13, weight: .semibold))
                     .foregroundStyle(valueColor)
@@ -179,8 +273,18 @@ struct AllocRow: View {
                 GeometryReader { geo in
                     ZStack(alignment: .leading) {
                         Rectangle().fill(Color.lSunken)
+                        if let targetPct, targetPct > 0 {
+                            Rectangle()
+                                .fill(Color.lInk3.opacity(0.25))
+                                .frame(width: max(0, geo.size.width * CGFloat(min(targetPct, 100) / 100)))
+                            Rectangle()
+                                .fill(Color.lInk2)
+                                .frame(width: 1)
+                                .offset(x: max(0, geo.size.width * CGFloat(min(targetPct, 100) / 100)) - 0.5)
+                        }
                         Rectangle().fill(color)
                             .frame(width: max(0, geo.size.width * CGFloat(pct / 100)))
+                            .opacity(targetPct == nil ? 1 : 0.85)
                     }
                 }
                 .frame(height: 4)
@@ -188,6 +292,37 @@ struct AllocRow: View {
             }
         }
         .padding(.vertical, 6)
+    }
+}
+
+struct VarianceChip: View {
+    let actual: Double
+    let target: Double
+
+    var body: some View {
+        let delta = actual - target
+        let neutral = abs(delta) < 0.1
+        let up = delta >= 0
+        let tint: Color = neutral ? .lInk3 : (up ? .lGain : .lLoss)
+        HStack(spacing: 3) {
+            if !neutral {
+                Image(systemName: up ? "arrow.up.right" : "arrow.down.right")
+                    .font(.system(size: 8, weight: .bold))
+            }
+            Text("\(up && !neutral ? "+" : (neutral ? "" : "−"))\(abs(delta), specifier: "%.1f")")
+                .font(Typo.mono(10, weight: .semibold))
+                .monospacedDigit()
+            Text("pp")
+                .font(Typo.mono(9))
+                .foregroundStyle(tint.opacity(0.7))
+        }
+        .foregroundStyle(tint)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
+        .background(tint.opacity(neutral ? 0.05 : 0.12))
+        .overlay(Capsule().stroke(tint.opacity(neutral ? 0.2 : 0.35), lineWidth: 1))
+        .clipShape(Capsule())
+        .help("Target \(String(format: "%.1f", target))% · Actual \(String(format: "%.1f", actual))%")
     }
 }
 

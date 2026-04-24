@@ -6,15 +6,26 @@ struct TreemapTile: Identifiable {
     let value: Double
     let color: Color
     let accountID: UUID?
+    let nativeValue: Double?
+    let nativeCurrency: Currency?
     var rect: CGRect = .zero
     var children: [TreemapTile] = []
 
-    init(id: UUID = UUID(), label: String, value: Double, color: Color, accountID: UUID? = nil, children: [TreemapTile] = []) {
+    init(id: UUID = UUID(),
+         label: String,
+         value: Double,
+         color: Color,
+         accountID: UUID? = nil,
+         nativeValue: Double? = nil,
+         nativeCurrency: Currency? = nil,
+         children: [TreemapTile] = []) {
         self.id = id
         self.label = label
         self.value = value
         self.color = color
         self.accountID = accountID
+        self.nativeValue = nativeValue
+        self.nativeCurrency = nativeCurrency
         self.children = children
     }
 }

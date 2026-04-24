@@ -20,7 +20,7 @@ struct PersonEditorSheet: View {
             .formStyle(.grouped)
 
             if let err = errorMessage {
-                Text(err).foregroundStyle(.red).font(.callout)
+                Text(err).foregroundStyle(Color.lLoss).font(Typo.sans(12))
             }
 
             HStack {

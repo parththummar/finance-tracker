@@ -21,6 +21,8 @@ struct TopBar: View {
 
             Spacer(minLength: 12)
 
+            GlobalSearchField()
+
             if !snapshots.isEmpty {
                 snapshotChip
             }
@@ -42,6 +44,8 @@ struct TopBar: View {
             )
 
             Menu {
+                Button("Dashboard PDF") { exportDashboardPDF() }
+                Divider()
                 Button("Full history CSV") { exportHistory() }
                 Button("Accounts list CSV") { exportAccounts() }
                 Button("Snapshot totals CSV") { exportTotals() }
@@ -138,7 +142,9 @@ struct TopBar: View {
         switch app.selectedScreen {
         case .dashboard:  return "Net Worth"
         case .breakdown:  return "Allocation"
+        case .trends:     return "Trends"
         case .snapshots:  return "Historical"
+        case .diff:       return "Diff"
         case .accounts:   return "All Assets"
         case .people:     return "By Person"
         case .countries:  return "By Country"
@@ -167,6 +173,16 @@ struct TopBar: View {
         pendingExport = PendingExport(
             document: CSVDocument(text: CSVExporter.snapshotTotals(snapshots: snapshots)),
             defaultFilename: "finance_totals_\(datestamp()).csv"
+        )
+    }
+
+    @MainActor
+    private func exportDashboardPDF() {
+        _ = DashboardPDFExporter.export(
+            snapshots: Array(snapshots),
+            displayCurrency: app.displayCurrency,
+            activeSnapshotID: app.activeSnapshotID,
+            theme: app.theme
         )
     }
 }

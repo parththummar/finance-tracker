@@ -23,8 +23,15 @@ struct FinanceTrackerApp: App {
         WindowGroup {
             RootView()
                 .environmentObject(AppState())
+                .environmentObject(UndoStash())
                 .frame(minWidth: 1100, minHeight: 1000)
         }
         .modelContainer(container)
+        .commands {
+            NavCommands()
+            SnapshotCommands()
+            SearchCommands()
+            UndoDeleteCommands()
+        }
     }
 }

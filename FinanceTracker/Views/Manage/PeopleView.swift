@@ -7,11 +7,29 @@ struct PeopleView: View {
     @State private var editing: Person?
     @State private var creatingNew: Bool = false
     @State private var confirmDelete: Person?
+    @StateObject private var sizer = ColumnSizer(tableID: "people", specs: [
+        ColumnSpec(id: "color",    title: "Color",    minWidth: 60,  defaultWidth: 80,  resizable: false),
+        ColumnSpec(id: "name",     title: "Name",     minWidth: 140, defaultWidth: 300, flex: true),
+        ColumnSpec(id: "accounts", title: "Accounts", minWidth: 80,  defaultWidth: 110, alignment: .trailing),
+        ColumnSpec(id: "actions",  title: "",         minWidth: 160, defaultWidth: 160, alignment: .trailing, resizable: false),
+    ])
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             header
-            tablePanel
+            if people.isEmpty {
+                EditorialEmpty(
+                    eyebrow: "Breakdown · People",
+                    title: "No household",
+                    titleItalic: "members yet.",
+                    body: "Wealth is usually held by someone. Add the people whose accounts you track — they become filters across every view.",
+                    detail: "A person owns zero or more accounts. Colors are assigned automatically.",
+                    ctaLabel: "New Person",
+                    cta: { creatingNew = true }
+                )
+            } else {
+                tablePanel
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .sheet(item: $editing) { PersonEditorSheet(existing: $0) }
@@ -55,7 +73,7 @@ struct PeopleView: View {
         Panel {
             VStack(spacing: 0) {
                 PanelHead(title: "Household members", meta: "\(people.count) total")
-                rowHeader
+                ResizableHeader(sizer: sizer)
                 ScrollView(.vertical) {
                     LazyVStack(spacing: 0) {
                         ForEach(Array(people.enumerated()), id: \.element.id) { idx, p in
@@ -71,47 +89,39 @@ struct PeopleView: View {
         .frame(maxHeight: .infinity)
     }
 
-    private var rowHeader: some View {
-        HStack {
-            Text("Color").frame(width: 60, alignment: .leading)
-            Text("Name").frame(maxWidth: .infinity, alignment: .leading)
-            Text("Accounts").frame(width: 100, alignment: .trailing)
-            Text("").frame(width: 160)
-        }
-        .font(Typo.eyebrow).tracking(1.2).foregroundStyle(Color.lInk3)
-        .padding(.horizontal, 18).padding(.vertical, 10)
-        .background(Color.lSunken)
-        .overlay(Rectangle().frame(height: 1).foregroundStyle(Color.lLine), alignment: .bottom)
-    }
-
     private func row(_ p: Person, idx: Int) -> some View {
-        HStack {
-            ColorSwatchButton(
-                current: Color.fromHex(p.colorHex) ?? Palette.fallback(for: p.name),
-                onPick: { c in
-                    p.colorHex = c.toHex()
-                    try? context.save()
-                }
-            )
-            .frame(width: 60, alignment: .leading)
-
-            Text(p.name)
-                .font(Typo.sans(13, weight: .medium))
-                .foregroundStyle(Color.lInk)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-            Text("\(p.accounts.count)")
-                .font(Typo.mono(12))
-                .foregroundStyle(Color.lInk2)
-                .frame(width: 100, alignment: .trailing)
-
-            HStack(spacing: 6) {
-                GhostButton(action: { editing = p }) { Text("Edit") }
-                GhostButton(action: { confirmDelete = p }) {
-                    Image(systemName: "trash").font(.system(size: 10, weight: .bold))
+        HStack(spacing: 0) {
+            ResizableCell(sizer: sizer, colID: "color") {
+                HStack {
+                    ColorSwatchButton(
+                        current: Color.fromHex(p.colorHex) ?? Palette.fallback(for: p.name),
+                        onPick: { c in
+                            p.colorHex = c.toHex()
+                            try? context.save()
+                        }
+                    )
+                    Spacer(minLength: 0)
                 }
             }
-            .frame(width: 160, alignment: .trailing)
+            ResizableCell(sizer: sizer, colID: "name") {
+                Text(p.name)
+                    .font(Typo.sans(13, weight: .medium))
+                    .foregroundStyle(Color.lInk)
+                    .lineLimit(1)
+            }
+            ResizableCell(sizer: sizer, colID: "accounts") {
+                Text("\(p.accounts.count)")
+                    .font(Typo.mono(12))
+                    .foregroundStyle(Color.lInk2)
+            }
+            ResizableCell(sizer: sizer, colID: "actions") {
+                HStack(spacing: 6) {
+                    GhostButton(action: { editing = p }) { Text("Edit") }
+                    GhostButton(action: { confirmDelete = p }) {
+                        Image(systemName: "trash").font(.system(size: 10, weight: .bold))
+                    }
+                }
+            }
         }
         .padding(.horizontal, 18).padding(.vertical, 10)
         .background(idx.isMultiple(of: 2) ? Color.clear : Color.lSunken.opacity(0.5))

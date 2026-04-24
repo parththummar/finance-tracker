@@ -192,7 +192,13 @@ enum Palette {
     }
 
     static func fallback(for key: String) -> Color {
-        Ink.chart[abs(key.hashValue) % Ink.chart.count].color
+        var hash: UInt64 = 0xcbf29ce484222325
+        for byte in key.utf8 {
+            hash ^= UInt64(byte)
+            hash &*= 0x100000001b3
+        }
+        let idx = Int(hash % UInt64(Ink.chart.count))
+        return Ink.chart[idx].color
     }
 
     static func unusedFallback(taken: [String]) -> Color {
@@ -250,6 +256,40 @@ enum CategoryColorStore {
         let key = keyPrefix + category.rawValue
         if let hex { UserDefaults.standard.set(hex, forKey: key) }
         else { UserDefaults.standard.removeObject(forKey: key) }
+    }
+}
+
+enum TargetAllocationStore {
+    private static let keyPrefix = "targetAlloc."
+    private static let existsSuffix = ".set"
+
+    static func pct(for category: AssetCategory) -> Double? {
+        let base = keyPrefix + category.rawValue
+        guard UserDefaults.standard.bool(forKey: base + existsSuffix) else { return nil }
+        return UserDefaults.standard.double(forKey: base)
+    }
+
+    static func setPct(_ value: Double?, for category: AssetCategory) {
+        let base = keyPrefix + category.rawValue
+        if let value {
+            UserDefaults.standard.set(value, forKey: base)
+            UserDefaults.standard.set(true, forKey: base + existsSuffix)
+        } else {
+            UserDefaults.standard.removeObject(forKey: base)
+            UserDefaults.standard.removeObject(forKey: base + existsSuffix)
+        }
+    }
+
+    static func all() -> [AssetCategory: Double] {
+        var map: [AssetCategory: Double] = [:]
+        for c in AssetCategory.allCases {
+            if let v = pct(for: c) { map[c] = v }
+        }
+        return map
+    }
+
+    static func totalSet() -> Double {
+        all().values.reduce(0, +)
     }
 }
 

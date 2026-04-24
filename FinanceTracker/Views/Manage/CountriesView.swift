@@ -7,11 +7,32 @@ struct CountriesView: View {
     @State private var editing: Country?
     @State private var creatingNew: Bool = false
     @State private var confirmDelete: Country?
+    @StateObject private var sizer = ColumnSizer(tableID: "countries", specs: [
+        ColumnSpec(id: "color",    title: "Color",    minWidth: 60,  defaultWidth: 80,  resizable: false),
+        ColumnSpec(id: "flag",     title: "Flag",     minWidth: 50,  defaultWidth: 60,  resizable: false),
+        ColumnSpec(id: "code",     title: "Code",     minWidth: 60,  defaultWidth: 80),
+        ColumnSpec(id: "name",     title: "Name",     minWidth: 140, defaultWidth: 280, flex: true),
+        ColumnSpec(id: "ccy",      title: "Ccy",      minWidth: 50,  defaultWidth: 70),
+        ColumnSpec(id: "accounts", title: "Accounts", minWidth: 80,  defaultWidth: 100, alignment: .trailing),
+        ColumnSpec(id: "actions",  title: "",         minWidth: 160, defaultWidth: 160, alignment: .trailing, resizable: false),
+    ])
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             header
-            tablePanel
+            if countries.isEmpty {
+                EditorialEmpty(
+                    eyebrow: "Breakdown · Countries",
+                    title: "No jurisdictions",
+                    titleItalic: "on file.",
+                    body: "Countries carry a flag, a default currency, and pin each account to a tax home. Add at least one before creating accounts.",
+                    detail: "Exchange rates translate native currencies to your display currency.",
+                    ctaLabel: "New Country",
+                    cta: { creatingNew = true }
+                )
+            } else {
+                tablePanel
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .sheet(item: $editing) { CountryEditorSheet(existing: $0) }
@@ -55,7 +76,7 @@ struct CountriesView: View {
         Panel {
             VStack(spacing: 0) {
                 PanelHead(title: "Jurisdictions", meta: "\(countries.count) total")
-                rowHeader
+                ResizableHeader(sizer: sizer)
                 ScrollView(.vertical) {
                     LazyVStack(spacing: 0) {
                         ForEach(Array(countries.enumerated()), id: \.element.id) { idx, c in
@@ -71,64 +92,52 @@ struct CountriesView: View {
         .frame(maxHeight: .infinity)
     }
 
-    private var rowHeader: some View {
-        HStack {
-            Text("Color").frame(width: 60, alignment: .leading)
-            Text("Flag").frame(width: 50, alignment: .leading)
-            Text("Code").frame(width: 70, alignment: .leading)
-            Text("Name").frame(maxWidth: .infinity, alignment: .leading)
-            Text("Ccy").frame(width: 70, alignment: .leading)
-            Text("Accounts").frame(width: 90, alignment: .trailing)
-            Text("").frame(width: 160)
-        }
-        .font(Typo.eyebrow).tracking(1.2).foregroundStyle(Color.lInk3)
-        .padding(.horizontal, 18).padding(.vertical, 10)
-        .background(Color.lSunken)
-        .overlay(Rectangle().frame(height: 1).foregroundStyle(Color.lLine), alignment: .bottom)
-    }
-
     private func row(_ c: Country, idx: Int) -> some View {
-        HStack {
-            ColorSwatchButton(
-                current: Color.fromHex(c.colorHex) ?? Palette.fallback(for: c.code),
-                onPick: { col in
-                    c.colorHex = col.toHex()
-                    try? context.save()
-                }
-            )
-            .frame(width: 60, alignment: .leading)
-
-            Text(c.flag)
-                .font(.system(size: 16))
-                .frame(width: 50, alignment: .leading)
-
-            Text(c.code)
-                .font(Typo.mono(12, weight: .semibold))
-                .foregroundStyle(Color.lInk)
-                .frame(width: 70, alignment: .leading)
-
-            Text(c.name)
-                .font(Typo.sans(13, weight: .medium))
-                .foregroundStyle(Color.lInk)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-            Text(c.defaultCurrency.rawValue)
-                .font(Typo.mono(11))
-                .foregroundStyle(Color.lInk3)
-                .frame(width: 70, alignment: .leading)
-
-            Text("\(c.accounts.count)")
-                .font(Typo.mono(12))
-                .foregroundStyle(Color.lInk2)
-                .frame(width: 90, alignment: .trailing)
-
-            HStack(spacing: 6) {
-                GhostButton(action: { editing = c }) { Text("Edit") }
-                GhostButton(action: { confirmDelete = c }) {
-                    Image(systemName: "trash").font(.system(size: 10, weight: .bold))
+        HStack(spacing: 0) {
+            ResizableCell(sizer: sizer, colID: "color") {
+                HStack {
+                    ColorSwatchButton(
+                        current: Color.fromHex(c.colorHex) ?? Palette.fallback(for: c.code),
+                        onPick: { col in
+                            c.colorHex = col.toHex()
+                            try? context.save()
+                        }
+                    )
+                    Spacer(minLength: 0)
                 }
             }
-            .frame(width: 160, alignment: .trailing)
+            ResizableCell(sizer: sizer, colID: "flag") {
+                Text(c.flag).font(.system(size: 16))
+            }
+            ResizableCell(sizer: sizer, colID: "code") {
+                Text(c.code)
+                    .font(Typo.mono(12, weight: .semibold))
+                    .foregroundStyle(Color.lInk)
+            }
+            ResizableCell(sizer: sizer, colID: "name") {
+                Text(c.name)
+                    .font(Typo.sans(13, weight: .medium))
+                    .foregroundStyle(Color.lInk)
+                    .lineLimit(1)
+            }
+            ResizableCell(sizer: sizer, colID: "ccy") {
+                Text(c.defaultCurrency.rawValue)
+                    .font(Typo.mono(11))
+                    .foregroundStyle(Color.lInk3)
+            }
+            ResizableCell(sizer: sizer, colID: "accounts") {
+                Text("\(c.accounts.count)")
+                    .font(Typo.mono(12))
+                    .foregroundStyle(Color.lInk2)
+            }
+            ResizableCell(sizer: sizer, colID: "actions") {
+                HStack(spacing: 6) {
+                    GhostButton(action: { editing = c }) { Text("Edit") }
+                    GhostButton(action: { confirmDelete = c }) {
+                        Image(systemName: "trash").font(.system(size: 10, weight: .bold))
+                    }
+                }
+            }
         }
         .padding(.horizontal, 18).padding(.vertical, 10)
         .background(idx.isMultiple(of: 2) ? Color.clear : Color.lSunken.opacity(0.5))

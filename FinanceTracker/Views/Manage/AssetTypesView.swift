@@ -8,11 +8,30 @@ struct AssetTypesView: View {
     @State private var creatingNew: Bool = false
     @State private var confirmDelete: AssetType?
     @State private var colorTick: Int = 0
+    @StateObject private var sizer = ColumnSizer(tableID: "assetTypes", specs: [
+        ColumnSpec(id: "color",    title: "Color",    minWidth: 60,  defaultWidth: 80,  resizable: false),
+        ColumnSpec(id: "name",     title: "Name",     minWidth: 140, defaultWidth: 280, flex: true),
+        ColumnSpec(id: "category", title: "Category", minWidth: 110, defaultWidth: 160),
+        ColumnSpec(id: "accounts", title: "Accounts", minWidth: 80,  defaultWidth: 110, alignment: .trailing),
+        ColumnSpec(id: "actions",  title: "",         minWidth: 160, defaultWidth: 160, alignment: .trailing, resizable: false),
+    ])
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             header
-            tablePanel
+            if types.isEmpty {
+                EditorialEmpty(
+                    eyebrow: "Breakdown · Asset Types",
+                    title: "No taxonomy",
+                    titleItalic: "defined.",
+                    body: "Asset types classify what each account holds — cash, equities, real estate, crypto, debt. They drive every category breakdown in the app.",
+                    detail: "Each type belongs to a category: Cash · Investment · Retirement · Insurance · Crypto · Debt · Other.",
+                    ctaLabel: "New Type",
+                    cta: { creatingNew = true }
+                )
+            } else {
+                tablePanel
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .sheet(item: $editing) { AssetTypeEditorSheet(existing: $0) }
@@ -56,7 +75,7 @@ struct AssetTypesView: View {
         Panel {
             VStack(spacing: 0) {
                 PanelHead(title: "Asset taxonomy", meta: "\(types.count) total")
-                rowHeader
+                ResizableHeader(sizer: sizer)
                 ScrollView(.vertical) {
                     LazyVStack(spacing: 0) {
                         ForEach(Array(types.enumerated()), id: \.element.id) { idx, t in
@@ -72,54 +91,46 @@ struct AssetTypesView: View {
         .frame(maxHeight: .infinity)
     }
 
-    private var rowHeader: some View {
-        HStack {
-            Text("Color").frame(width: 60, alignment: .leading)
-            Text("Name").frame(maxWidth: .infinity, alignment: .leading)
-            Text("Category").frame(width: 150, alignment: .leading)
-            Text("Accounts").frame(width: 100, alignment: .trailing)
-            Text("").frame(width: 160)
-        }
-        .font(Typo.eyebrow).tracking(1.2).foregroundStyle(Color.lInk3)
-        .padding(.horizontal, 18).padding(.vertical, 10)
-        .background(Color.lSunken)
-        .overlay(Rectangle().frame(height: 1).foregroundStyle(Color.lLine), alignment: .bottom)
-    }
-
     private func row(_ t: AssetType, idx: Int) -> some View {
-        HStack {
-            ColorSwatchButton(
-                current: Palette.color(for: t.category),
-                onPick: { c in
-                    CategoryColorStore.setHex(c.toHex(), for: t.category)
-                    colorTick &+= 1
-                }
-            )
-            .id("swatch-\(t.id)-\(colorTick)")
-            .frame(width: 60, alignment: .leading)
-
-            Text(t.name)
-                .font(Typo.sans(13, weight: .medium))
-                .foregroundStyle(Color.lInk)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-            Text(t.category.rawValue)
-                .font(Typo.sans(12))
-                .foregroundStyle(Color.lInk2)
-                .frame(width: 150, alignment: .leading)
-
-            Text("\(t.accounts.count)")
-                .font(Typo.mono(12))
-                .foregroundStyle(Color.lInk2)
-                .frame(width: 100, alignment: .trailing)
-
-            HStack(spacing: 6) {
-                GhostButton(action: { editing = t }) { Text("Edit") }
-                GhostButton(action: { confirmDelete = t }) {
-                    Image(systemName: "trash").font(.system(size: 10, weight: .bold))
+        HStack(spacing: 0) {
+            ResizableCell(sizer: sizer, colID: "color") {
+                HStack {
+                    ColorSwatchButton(
+                        current: Palette.color(for: t.category),
+                        onPick: { c in
+                            CategoryColorStore.setHex(c.toHex(), for: t.category)
+                            colorTick &+= 1
+                        }
+                    )
+                    .id("swatch-\(t.id)-\(colorTick)")
+                    Spacer(minLength: 0)
                 }
             }
-            .frame(width: 160, alignment: .trailing)
+            ResizableCell(sizer: sizer, colID: "name") {
+                Text(t.name)
+                    .font(Typo.sans(13, weight: .medium))
+                    .foregroundStyle(Color.lInk)
+                    .lineLimit(1)
+            }
+            ResizableCell(sizer: sizer, colID: "category") {
+                Text(t.category.rawValue)
+                    .font(Typo.sans(12))
+                    .foregroundStyle(Color.lInk2)
+                    .lineLimit(1)
+            }
+            ResizableCell(sizer: sizer, colID: "accounts") {
+                Text("\(t.accounts.count)")
+                    .font(Typo.mono(12))
+                    .foregroundStyle(Color.lInk2)
+            }
+            ResizableCell(sizer: sizer, colID: "actions") {
+                HStack(spacing: 6) {
+                    GhostButton(action: { editing = t }) { Text("Edit") }
+                    GhostButton(action: { confirmDelete = t }) {
+                        Image(systemName: "trash").font(.system(size: 10, weight: .bold))
+                    }
+                }
+            }
         }
         .padding(.horizontal, 18).padding(.vertical, 10)
         .background(idx.isMultiple(of: 2) ? Color.clear : Color.lSunken.opacity(0.5))

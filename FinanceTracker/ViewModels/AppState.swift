@@ -1,8 +1,9 @@
 import SwiftUI
+import AppKit
 import Combine
 
 enum Screen: Hashable {
-    case dashboard, breakdown, snapshots, accounts, people, countries, assetTypes, settings
+    case dashboard, breakdown, trends, snapshots, diff, accounts, people, countries, assetTypes, settings
 }
 
 final class AppState: ObservableObject {
@@ -16,6 +17,9 @@ final class AppState: ObservableObject {
 
     @Published var selectedScreen: Screen = .dashboard
     @Published var activeSnapshotID: UUID? = nil
+    @Published var newSnapshotRequested: Bool = false
+    @Published var pendingBreakdownFilter: PendingFilter? = nil
+    @Published var globalSearchFocusTick: Int = 0
 
     var displayCurrency: Currency {
         get { Currency(rawValue: displayCurrencyRaw) ?? .USD }
@@ -27,7 +31,25 @@ final class AppState: ObservableObject {
     }
     var theme: AppTheme {
         get { AppTheme(rawValue: themeRaw) ?? .system }
-        set { themeRaw = newValue.rawValue; objectWillChange.send() }
+        set {
+            themeRaw = newValue.rawValue
+            objectWillChange.send()
+            applyAppearance()
+        }
+    }
+
+    init() {
+        applyAppearance()
+    }
+
+    func applyAppearance() {
+        let appearance: NSAppearance?
+        switch theme {
+        case .system: appearance = nil
+        case .light:  appearance = NSAppearance(named: .aqua)
+        case .dark:   appearance = NSAppearance(named: .darkAqua)
+        }
+        NSApp.appearance = appearance
     }
     var byPersonStyle: ChartStyle {
         get { ChartStyle(rawValue: byPersonStyleRaw) ?? .donut }

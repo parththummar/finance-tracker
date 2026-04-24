@@ -21,4 +21,13 @@ enum CurrencyConverter {
                        to: target,
                        usdToInrRate: snap.usdToInrRate)
     }
+
+    /// Same as displayValue but flips the sign for `.debt` accounts so they
+    /// subtract from net worth regardless of how the user entered the balance.
+    static func netDisplayValue(for assetValue: AssetValue, in target: Currency) -> Double {
+        let raw = displayValue(for: assetValue, in: target)
+        let isDebt = assetValue.account?.assetType?.category == .debt
+        let magnitude = abs(raw)
+        return isDebt ? -magnitude : raw
+    }
 }

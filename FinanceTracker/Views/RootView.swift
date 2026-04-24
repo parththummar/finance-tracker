@@ -3,8 +3,13 @@ import SwiftData
 
 struct RootView: View {
     @EnvironmentObject var app: AppState
+    @EnvironmentObject var undo: UndoStash
+    @Environment(\.modelContext) private var context
     @Query(sort: \Snapshot.date, order: .reverse) private var snapshots: [Snapshot]
-
+    @Query private var people: [Person]
+    @Query private var countries: [Country]
+    @Query private var types: [AssetType]
+    @Query private var accounts: [Account]
     var body: some View {
         HStack(spacing: 0) {
             Sidebar()
@@ -16,7 +21,20 @@ struct RootView: View {
             }
         }
         .background(Color.lBg)
-        .preferredColorScheme(app.preferredColorScheme)
+        .overlay(alignment: .bottom) { UndoToast() }
+        .focusedSceneValue(\.appState, app)
+        .focusedSceneValue(\.undoStash, undo)
+        .focusedSceneValue(\.sceneModelContext, context)
+        .focusedSceneValue(\.restoreDelete) {
+            undo.restore(
+                context: context,
+                people: people,
+                countries: countries,
+                types: types,
+                accounts: accounts,
+                snapshots: snapshots
+            )
+        }
         .onAppear {
             if app.activeSnapshotID == nil, let latest = snapshots.first {
                 app.activeSnapshotID = latest.id
@@ -29,7 +47,9 @@ struct RootView: View {
         switch app.selectedScreen {
         case .dashboard:  scrollable { DashboardView() }
         case .breakdown:  scrollable { BreakdownView() }
+        case .trends:     scrollable { TrendsView() }
         case .snapshots:  scrollable { SnapshotListView() }
+        case .diff:       scrollable { SnapshotDiffView() }
         case .settings:   scrollable { SettingsView() }
         case .accounts:   paged { AccountsView() }
         case .people:     paged { PeopleView() }

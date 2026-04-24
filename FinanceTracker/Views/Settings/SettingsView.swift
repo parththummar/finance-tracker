@@ -2,6 +2,7 @@ import SwiftUI
 import SwiftData
 import UniformTypeIdentifiers
 import AppKit
+import Charts
 
 struct SettingsView: View {
     @EnvironmentObject var app: AppState
@@ -35,6 +36,7 @@ struct SettingsView: View {
                 displayPanel
                 remindersPanel
                 categoryColorsPanel
+                fxRatePanel
                 exportPanel
                 dataPanel
             }
@@ -248,6 +250,10 @@ struct SettingsView: View {
         }
     }
 
+    private var fxRatePanel: some View {
+        FXRateHistoryPanel(snapshots: snapshots)
+    }
+
     private var remindersPanel: some View {
         Panel {
             VStack(spacing: 0) {
@@ -359,48 +365,38 @@ struct SettingsView: View {
 
     @MainActor
     private func exportDashboardPDF() {
-        let view = DashboardView()
-            .environmentObject(app)
-            .modelContainer(context.container)
-            .frame(width: 1000, height: 1600)
-            .padding(16)
-
-        let renderer = ImageRenderer(content: view)
-        renderer.proposedSize = .init(width: 1000, height: 1600)
-
-        let panel = NSSavePanel()
-        panel.title = "Export Dashboard PDF"
-        panel.nameFieldStringValue = "FinanceTracker-dashboard-\(datestamp()).pdf"
-        panel.allowedContentTypes = [.pdf]
-        guard panel.runModal() == .OK, let dest = panel.url else { return }
-
-        renderer.render { size, context in
-            var box = CGRect(origin: .zero, size: size)
-            guard let consumer = CGDataConsumer(url: dest as CFURL),
-                  let pdf = CGContext(consumer: consumer, mediaBox: &box, nil) else {
-                backupMessage = "PDF setup failed."
-                return
-            }
-            pdf.beginPDFPage(nil)
-            context(pdf)
-            pdf.endPDFPage()
-            pdf.closePDF()
+        let result = DashboardPDFExporter.export(
+            snapshots: Array(snapshots),
+            displayCurrency: app.displayCurrency,
+            activeSnapshotID: app.activeSnapshotID,
+            theme: app.theme
+        )
+        switch result {
+        case .exported(let msg): backupMessage = msg
+        case .failed(let msg):   backupMessage = msg
+        case .cancelled:         break
         }
-        backupMessage = "Exported \(dest.lastPathComponent)."
     }
 
     private func resetAllData() {
-        let types: [any PersistentModel.Type] = [
-            AssetValue.self, Snapshot.self, Account.self,
-            AssetType.self, Country.self, Person.self, ExchangeRateHistory.self
-        ]
-        for t in types {
-            try? context.delete(model: t)
-        }
+        deleteAll(AssetValue.self)
+        deleteAll(Snapshot.self)
+        deleteAll(Account.self)
+        deleteAll(AssetType.self)
+        deleteAll(Country.self)
+        deleteAll(Person.self)
+        deleteAll(ExchangeRateHistory.self)
         try? context.save()
         SeedData.seedIfEmpty(context: context)
         try? context.save()
         backupMessage = "Reset complete. Sample data re-seeded."
+    }
+
+    private func deleteAll<T: PersistentModel>(_ type: T.Type) {
+        let fd = FetchDescriptor<T>()
+        if let items = try? context.fetch(fd) {
+            for item in items { context.delete(item) }
+        }
     }
 }
 

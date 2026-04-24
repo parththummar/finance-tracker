@@ -5,6 +5,7 @@ struct SnapshotEditorView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var context
     @EnvironmentObject var app: AppState
+    @EnvironmentObject var undo: UndoStash
     @Query(sort: \Snapshot.date, order: .reverse) private var allSnapshots: [Snapshot]
     let snapshot: Snapshot
     @State private var confirmingLock = false
@@ -84,13 +85,16 @@ struct SnapshotEditorView: View {
                             isPresented: $confirmingDelete,
                             titleVisibility: .visible) {
             Button("Delete Snapshot", role: .destructive) {
+                let cap = undo.capture(snapshot: snapshot)
+                if app.activeSnapshotID == snapshot.id { app.activeSnapshotID = nil }
                 context.delete(snapshot)
                 try? context.save()
+                undo.stash(.snapshot(cap))
                 dismiss()
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Removes this snapshot and all \(snapshot.values.count) account values. Cannot be undone.")
+            Text("Removes this snapshot and all \(snapshot.values.count) account values.")
         }
     }
 
@@ -361,8 +365,11 @@ struct SnapshotEditorView: View {
             saveError = nil
             withAnimation { showSavedToast = true }
             Task {
-                try? await Task.sleep(nanoseconds: 1_800_000_000)
-                await MainActor.run { withAnimation { showSavedToast = false } }
+                try? await Task.sleep(nanoseconds: 900_000_000)
+                await MainActor.run {
+                    withAnimation { showSavedToast = false }
+                    dismiss()
+                }
             }
         } catch {
             saveError = "Save failed: \(error.localizedDescription)"

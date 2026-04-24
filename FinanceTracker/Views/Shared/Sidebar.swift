@@ -1,10 +1,7 @@
 import SwiftUI
-import SwiftData
 
 struct Sidebar: View {
     @EnvironmentObject var app: AppState
-    @Query(sort: \Person.name) private var people: [Person]
-    @Query(sort: \Country.code) private var countries: [Country]
 
     private struct NavItem: Identifiable {
         let id = UUID()
@@ -17,7 +14,9 @@ struct Sidebar: View {
     private let groups: [NavGroup] = [
         NavGroup(section: "Overview", items: [
             NavItem(screen: .dashboard, label: "Net Worth", icon: "chart.bar.doc.horizontal"),
+            NavItem(screen: .trends, label: "Trends", icon: "waveform.path.ecg"),
             NavItem(screen: .snapshots, label: "Historical", icon: "chart.line.uptrend.xyaxis"),
+            NavItem(screen: .diff, label: "Diff", icon: "arrow.left.arrow.right"),
         ]),
         NavGroup(section: "Breakdown", items: [
             NavItem(screen: .breakdown, label: "By Allocation", icon: "square.grid.2x2"),
@@ -27,7 +26,6 @@ struct Sidebar: View {
         ]),
         NavGroup(section: "Data", items: [
             NavItem(screen: .accounts, label: "All Assets", icon: "list.bullet"),
-            NavItem(screen: .settings, label: "Settings", icon: "gearshape"),
         ]),
     ]
 
@@ -60,8 +58,8 @@ struct Sidebar: View {
 
             Spacer(minLength: 0)
 
-            householdCard
-                .padding(14)
+            navRow(NavItem(screen: .settings, label: "Settings", icon: "gearshape"))
+                .padding(.bottom, 14)
         }
         .frame(width: 240)
         .background(Color.lBg2)
@@ -118,35 +116,4 @@ struct Sidebar: View {
         .padding(.horizontal, 10)
     }
 
-    private var householdCard: some View {
-        HStack(spacing: 10) {
-            ZStack {
-                ForEach(Array(people.prefix(3).enumerated()), id: \.element.id) { i, p in
-                    Avatar(text: String(p.name.prefix(1)),
-                           color: Color.fromHex(p.colorHex) ?? Palette.fallback(for: p.name),
-                           size: 26)
-                        .overlay(Circle().stroke(Color.lBg2, lineWidth: 1.5))
-                        .offset(x: CGFloat(i) * 14)
-                }
-            }
-            .frame(width: CGFloat(min(people.count, 3)) * 14 + 12, alignment: .leading)
-
-            VStack(alignment: .leading, spacing: 1) {
-                Text(people.map(\.name).joined(separator: " & "))
-                    .font(Typo.sans(12, weight: .semibold))
-                    .foregroundStyle(Color.lInk)
-                    .lineLimit(1)
-                Text("household · \(countries.count) \(countries.count == 1 ? "country" : "countries")")
-                    .font(Typo.eyebrow)
-                    .textCase(.uppercase)
-                    .tracking(1.2)
-                    .foregroundStyle(Color.lInk3)
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(12)
-        .background(Color.lPanel)
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.lLine, lineWidth: 1))
-        .clipShape(RoundedRectangle(cornerRadius: 10))
-    }
 }

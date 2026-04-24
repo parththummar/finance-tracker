@@ -16,6 +16,12 @@ struct Filter: Hashable, Identifiable {
     let matchValue: String
 }
 
+struct PendingFilter: Equatable {
+    let key: GroupKey
+    let matchValue: String
+    let label: String
+}
+
 struct BreakdownView: View {
     @EnvironmentObject var app: AppState
     @Query(sort: \Snapshot.date, order: .reverse) private var snapshots: [Snapshot]
@@ -25,13 +31,78 @@ struct BreakdownView: View {
     @State private var historyAccount: Account?
     @Query private var accounts: [Account]
 
+    @State private var cachedRows: [Row] = []
+    @State private var cachedSorted: [Row] = []
+    @State private var cachedTiles: [TreemapTile] = []
+    @State private var cachedTotal: Double = 0
+    @StateObject private var sizer = ColumnSizer(tableID: "breakdown", specs: [
+        ColumnSpec(id: "account", title: "Account", minWidth: 140, defaultWidth: 260, flex: true),
+        ColumnSpec(id: "owner",   title: "Owner",   minWidth: 90,  defaultWidth: 150),
+        ColumnSpec(id: "country", title: "Country", minWidth: 55,  defaultWidth: 80),
+        ColumnSpec(id: "type",    title: "Type",    minWidth: 100, defaultWidth: 150),
+        ColumnSpec(id: "native",  title: "Native",  minWidth: 90,  defaultWidth: 130, alignment: .trailing),
+        ColumnSpec(id: "display", title: "Display", minWidth: 90,  defaultWidth: 130, alignment: .trailing),
+        ColumnSpec(id: "pct",     title: "%",       minWidth: 50,  defaultWidth: 70,  alignment: .trailing),
+    ])
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            header
-            Panel { treemapSection }
-            Panel { tableSection }
+        Group {
+            if snapshots.isEmpty {
+                VStack(alignment: .leading, spacing: 20) {
+                    header
+                    EditorialEmpty(
+                        eyebrow: "Breakdown · Allocation",
+                        title: "Nothing",
+                        titleItalic: "to allocate.",
+                        body: "Allocation needs at least one snapshot to slice. Create a snapshot, record balances, then return here to see the treemap and table.",
+                        detail: "Filter by person, country, or asset type once data exists.",
+                        ctaLabel: "Create first snapshot",
+                        cta: {
+                            app.newSnapshotRequested = true
+                            app.selectedScreen = .snapshots
+                        }
+                    )
+                }
+            } else {
+                VStack(alignment: .leading, spacing: 20) {
+                    header
+                    Panel { treemapSection }
+                    Panel { tableSection }
+                }
+            }
         }
         .sheet(item: $historyAccount) { AccountHistoryView(account: $0) }
+        .onAppear {
+            consumePending()
+            recompute()
+        }
+        .onChange(of: app.pendingBreakdownFilter) { _, _ in consumePending() }
+        .onChange(of: app.activeSnapshotID) { _, _ in recompute() }
+        .onChange(of: app.displayCurrency) { _, _ in recompute() }
+        .onChange(of: groupBy) { _, _ in recompute() }
+        .onChange(of: filters) { _, _ in recompute() }
+        .onChange(of: snapshots.count) { _, _ in recompute() }
+    }
+
+    private func consumePending() {
+        guard let pf = app.pendingBreakdownFilter else { return }
+        app.pendingBreakdownFilter = nil
+        groupBy = pf.key
+        let newFilter = Filter(key: pf.key, label: pf.label, matchValue: pf.matchValue)
+        if !filters.contains(where: { $0.key == newFilter.key && $0.matchValue == newFilter.matchValue }) {
+            filters.append(newFilter)
+        }
+    }
+
+    private func recompute() {
+        let rows = computeRows()
+        let sorted = rows.sorted { $0.display > $1.display }
+        let total = rows.reduce(0) { $0 + $1.display }
+        let tiles = computeTiles(from: rows)
+        cachedRows = rows
+        cachedSorted = sorted
+        cachedTotal = total
+        cachedTiles = tiles
     }
 
     private var active: Snapshot? {
@@ -89,8 +160,10 @@ struct BreakdownView: View {
 
     // MARK: treemap
 
-    private var filteredRows: [Row] {
+    private func computeRows() -> [Row] {
         guard let s = active else { return [] }
+        let target = app.displayCurrency
+        let rate = s.usdToInrRate
         return s.values.compactMap { v -> Row? in
             guard let acc = v.account else { return nil }
             let personName = acc.person?.name ?? "—"
@@ -108,7 +181,12 @@ struct BreakdownView: View {
                 assetType: acc.assetType?.name ?? "—",
                 currency: acc.nativeCurrency,
                 nativeValue: v.nativeValue,
-                display: CurrencyConverter.displayValue(for: v, in: app.displayCurrency)
+                display: CurrencyConverter.convert(
+                    nativeValue: v.nativeValue,
+                    from: acc.nativeCurrency,
+                    to: target,
+                    usdToInrRate: rate
+                )
             )
             for f in filters {
                 switch f.key {
@@ -123,8 +201,7 @@ struct BreakdownView: View {
         }
     }
 
-    private var tiles: [TreemapTile] {
-        let rows = filteredRows
+    private func computeTiles(from rows: [Row]) -> [TreemapTile] {
         let groups = Dictionary(grouping: rows) { row in
             switch groupBy {
             case .category:  return row.category
@@ -137,7 +214,16 @@ struct BreakdownView: View {
             let total = groupRows.map(\.display).reduce(0, +)
             let color = colorFor(group: groupLabel, key: groupBy, sample: groupRows.first)
             let children = groupRows.sorted { $0.display > $1.display }
-                .map { r in TreemapTile(label: r.name, value: max(r.display, 0.01), color: color, accountID: r.accountID) }
+                .map { r in
+                    TreemapTile(
+                        label: r.name,
+                        value: max(r.display, 0.01),
+                        color: color,
+                        accountID: r.accountID,
+                        nativeValue: r.nativeValue,
+                        nativeCurrency: r.currency
+                    )
+                }
             return TreemapTile(label: groupLabel, value: max(total, 0.01), color: color, children: children)
         }
         .sorted { $0.value > $1.value }
@@ -159,11 +245,12 @@ struct BreakdownView: View {
 
     private var treemapSection: some View {
         VStack(alignment: .leading, spacing: 0) {
-            PanelHead(title: "Treemap", meta: Fmt.compact(filteredRows.map(\.display).reduce(0, +), app.displayCurrency))
+            PanelHead(title: "Treemap", meta: Fmt.compact(cachedTotal, app.displayCurrency))
             VStack(alignment: .leading, spacing: 10) {
                 TreemapView(
-                    tiles: tiles,
+                    tiles: cachedTiles,
                     currency: app.displayCurrency,
+                    total: cachedTotal,
                     onTap: { tile in handleTap(tile) },
                     onHover: { tile in hovered = tile }
                 )
@@ -223,52 +310,52 @@ struct BreakdownView: View {
     }
 
     private var tableSection: some View {
-        let rows = filteredRows.sorted { $0.display > $1.display }
-        let total = rows.map(\.display).reduce(0, +)
+        let rows = cachedSorted
+        let total = cachedTotal
         return VStack(spacing: 0) {
             PanelHead(title: "Accounts", meta: "\(rows.count) total")
             VStack(spacing: 0) {
-                HStack {
-                    Text("Account").frame(maxWidth: .infinity, alignment: .leading)
-                    Text("Owner").frame(width: 130, alignment: .leading)
-                    Text("Country").frame(width: 70, alignment: .leading)
-                    Text("Type").frame(width: 140, alignment: .leading)
-                    Text("Native").frame(width: 120, alignment: .trailing)
-                    Text(app.displayCurrency.rawValue).frame(width: 120, alignment: .trailing)
-                    Text("%").frame(width: 60, alignment: .trailing)
-                }
-                .font(Typo.eyebrow).tracking(1.2)
-                .foregroundStyle(Color.lInk3)
-                .padding(.horizontal, 18).padding(.vertical, 10)
-                .background(Color.lSunken)
-                .overlay(Rectangle().frame(height: 1).foregroundStyle(Color.lLine), alignment: .bottom)
-
+                ResizableHeader(sizer: sizer)
                 ForEach(Array(rows.enumerated()), id: \.element.id) { i, r in
-                    HStack {
-                        Text(r.name).font(Typo.sans(12.5, weight: .medium))
-                            .foregroundStyle(Color.lInk)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        HStack(spacing: 5) {
-                            RoundedRectangle(cornerRadius: 2)
-                                .fill(r.personColor).frame(width: 6, height: 12)
-                            Text(r.person).font(Typo.sans(12))
+                    HStack(spacing: 0) {
+                        ResizableCell(sizer: sizer, colID: "account") {
+                            Text(r.name).font(Typo.sans(12.5, weight: .medium))
+                                .foregroundStyle(Color.lInk)
+                                .lineLimit(1)
                         }
-                        .foregroundStyle(Color.lInk2)
-                        .frame(width: 130, alignment: .leading)
-                        Text(r.country).font(.system(size: 13))
-                            .frame(width: 70, alignment: .leading)
-                        Text(r.assetType).font(Typo.sans(12)).foregroundStyle(Color.lInk2)
-                            .frame(width: 140, alignment: .leading)
-                        Text(Fmt.currency(r.nativeValue, r.currency))
-                            .font(Typo.mono(12)).foregroundStyle(Color.lInk2)
-                            .frame(width: 120, alignment: .trailing)
-                        Text(Fmt.compact(r.display, app.displayCurrency))
-                            .font(Typo.mono(12, weight: .semibold))
-                            .frame(width: 120, alignment: .trailing)
-                        Text(total > 0 ? String(format: "%.1f%%", r.display / total * 100) : "—")
-                            .font(Typo.mono(11))
-                            .foregroundStyle(Color.lInk3)
-                            .frame(width: 60, alignment: .trailing)
+                        ResizableCell(sizer: sizer, colID: "owner") {
+                            HStack(spacing: 5) {
+                                RoundedRectangle(cornerRadius: 2)
+                                    .fill(r.personColor).frame(width: 6, height: 12)
+                                Text(r.person).font(Typo.sans(12))
+                                    .lineLimit(1)
+                                Spacer(minLength: 0)
+                            }
+                            .foregroundStyle(Color.lInk2)
+                        }
+                        ResizableCell(sizer: sizer, colID: "country") {
+                            Text(r.country).font(.system(size: 13))
+                                .lineLimit(1)
+                        }
+                        ResizableCell(sizer: sizer, colID: "type") {
+                            Text(r.assetType).font(Typo.sans(12))
+                                .foregroundStyle(Color.lInk2)
+                                .lineLimit(1)
+                        }
+                        ResizableCell(sizer: sizer, colID: "native") {
+                            Text(Fmt.currency(r.nativeValue, r.currency))
+                                .font(Typo.mono(12))
+                                .foregroundStyle(Color.lInk2)
+                        }
+                        ResizableCell(sizer: sizer, colID: "display") {
+                            Text(Fmt.compact(r.display, app.displayCurrency))
+                                .font(Typo.mono(12, weight: .semibold))
+                        }
+                        ResizableCell(sizer: sizer, colID: "pct") {
+                            Text(total > 0 ? String(format: "%.1f%%", r.display / total * 100) : "—")
+                                .font(Typo.mono(11))
+                                .foregroundStyle(Color.lInk3)
+                        }
                     }
                     .padding(.horizontal, 18)
                     .padding(.vertical, 10)
