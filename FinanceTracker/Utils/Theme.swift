@@ -293,18 +293,3 @@ enum TargetAllocationStore {
     }
 }
 
-// MARK: - Legacy Card (kept; new code uses Panel)
-
-struct Card<Content: View>: View {
-    let content: () -> Content
-    init(@ViewBuilder _ content: @escaping () -> Content) { self.content = content }
-    var body: some View {
-        content()
-            .padding(16)
-            .background(Color.lPanel, in: RoundedRectangle(cornerRadius: 12))
-            .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(Color.lLine, lineWidth: 1)
-            )
-    }
-}

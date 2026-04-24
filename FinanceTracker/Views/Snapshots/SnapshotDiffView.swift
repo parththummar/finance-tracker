@@ -310,17 +310,9 @@ struct SnapshotDiffView: View {
             return
         }
         let target = app.displayCurrency
-        let rateA = a.usdToInrRate
-        let rateB = b.usdToInrRate
 
-        func value(_ v: AssetValue, rate: Double) -> Double {
-            guard let acc = v.account else { return 0 }
-            return CurrencyConverter.convert(
-                nativeValue: v.nativeValue,
-                from: acc.nativeCurrency,
-                to: target,
-                usdToInrRate: rate
-            )
+        func value(_ v: AssetValue) -> Double {
+            CurrencyConverter.netDisplayValue(for: v, in: target)
         }
 
         struct Bucket { var sum: Double = 0; var acc: Account? }
@@ -328,11 +320,11 @@ struct SnapshotDiffView: View {
         var mapB: [UUID: Bucket] = [:]
         for v in a.values {
             guard let acc = v.account else { continue }
-            mapA[acc.id, default: Bucket(acc: acc)].sum += value(v, rate: rateA)
+            mapA[acc.id, default: Bucket(acc: acc)].sum += value(v)
         }
         for v in b.values {
             guard let acc = v.account else { continue }
-            mapB[acc.id, default: Bucket(acc: acc)].sum += value(v, rate: rateB)
+            mapB[acc.id, default: Bucket(acc: acc)].sum += value(v)
         }
 
         let ids = Set(mapA.keys).union(mapB.keys)

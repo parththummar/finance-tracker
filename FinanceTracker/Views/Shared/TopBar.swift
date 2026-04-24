@@ -94,13 +94,16 @@ struct TopBar: View {
             Text("Ledgerly")
                 .font(Typo.sans(12))
                 .foregroundStyle(Color.lInk3)
+                .lineLimit(1)
             Text("/")
                 .font(Typo.sans(12))
                 .foregroundStyle(Color.lInk4)
             Text(screenTitle)
                 .font(Typo.sans(12, weight: .semibold))
                 .foregroundStyle(Color.lInk)
+                .lineLimit(1)
         }
+        .fixedSize()
     }
 
     private var snapshotChip: some View {

@@ -64,7 +64,7 @@ struct GlobalSearchField: View {
                 .font(Typo.sans(12))
                 .foregroundStyle(Color.lInk)
                 .focused($focused)
-                .frame(minWidth: 220, maxWidth: 340)
+                .frame(minWidth: 120, maxWidth: 340)
                 .onSubmit {
                     if let first = results.first { open(first) }
                 }

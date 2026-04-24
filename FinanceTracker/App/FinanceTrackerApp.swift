@@ -17,6 +17,8 @@ struct FinanceTrackerApp: App {
         } catch {
             fatalError("Failed to create ModelContainer: \(error)")
         }
+        _ = BackupService.runIfDue()
+        ReminderScheduler.check(context: container.mainContext)
     }
 
     var body: some Scene {
@@ -24,9 +26,10 @@ struct FinanceTrackerApp: App {
             RootView()
                 .environmentObject(AppState())
                 .environmentObject(UndoStash())
-                .frame(minWidth: 1100, minHeight: 1000)
         }
         .modelContainer(container)
+        .defaultSize(width: 1400, height: 1000)
+        .windowResizability(.contentMinSize)
         .commands {
             NavCommands()
             SnapshotCommands()

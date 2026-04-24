@@ -7,7 +7,7 @@ final class AssetType {
     @Attribute(.unique) var name: String
     var category: AssetCategory
 
-    @Relationship(deleteRule: .cascade, inverse: \Account.assetType)
+    @Relationship(deleteRule: .nullify, inverse: \Account.assetType)
     var accounts: [Account] = []
 
     init(name: String, category: AssetCategory) {

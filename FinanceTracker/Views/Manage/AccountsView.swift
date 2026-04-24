@@ -146,9 +146,9 @@ struct AccountsView: View {
                 }
             }
             ResizableCell(sizer: sizer, colID: "type") {
-                Text(a.assetType?.name ?? "—")
+                Text(a.assetType?.name ?? "Unknown type")
                     .font(Typo.sans(12))
-                    .foregroundStyle(Color.lInk2)
+                    .foregroundStyle(a.assetType == nil ? Color.lLoss : Color.lInk2)
                     .lineLimit(1)
             }
             ResizableCell(sizer: sizer, colID: "ccy") {

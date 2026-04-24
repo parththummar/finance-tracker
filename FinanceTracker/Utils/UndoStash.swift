@@ -49,6 +49,9 @@ final class UndoStash: ObservableObject {
     private(set) var remaining: TimeInterval = 0 {
         willSet { objectWillChange.send() }
     }
+    private(set) var restoreError: String? {
+        willSet { objectWillChange.send() }
+    }
 
     private var expireTask: Task<Void, Never>?
     private let ttl: TimeInterval = 10
@@ -119,6 +122,8 @@ final class UndoStash: ObservableObject {
         remaining = 0
     }
 
+    func clearRestoreError() { restoreError = nil }
+
     func restore(context: ModelContext,
                  people: [Person],
                  countries: [Country],
@@ -170,7 +175,13 @@ final class UndoStash: ObservableObject {
                 context.insert(av)
             }
         }
-        try? context.save()
+        do {
+            try context.save()
+            restoreError = nil
+        } catch {
+            restoreError = "Restore failed: \(error.localizedDescription)"
+            context.rollback()
+        }
         clear()
     }
 }

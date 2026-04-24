@@ -56,6 +56,7 @@ struct SnapshotEditorView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     valuesPanel
+                    notesPanel
 
                     if let err = saveError {
                         errorBanner(err)
@@ -330,10 +331,16 @@ struct SnapshotEditorView: View {
             Spacer()
             GhostButton(action: { dismiss() }) { Text("Close") }
             if !snapshot.isLocked {
-                GhostButton(action: saveDraft) {
+                GhostButton(action: { saveDraft(dismissAfter: false) }) {
                     HStack(spacing: 5) {
                         Image(systemName: "square.and.arrow.down").font(.system(size: 10, weight: .bold))
                         Text("Save Draft")
+                    }
+                }
+                GhostButton(action: { saveDraft(dismissAfter: true) }) {
+                    HStack(spacing: 5) {
+                        Image(systemName: "square.and.arrow.down.on.square").font(.system(size: 10, weight: .bold))
+                        Text("Save & Close")
                     }
                 }
                 PrimaryButton(action: { confirmingLock = true }) {
@@ -345,6 +352,49 @@ struct SnapshotEditorView: View {
             }
         }
         .padding(.horizontal, 24).padding(.vertical, 16)
+    }
+
+    private var notesPanel: some View {
+        Panel {
+            VStack(alignment: .leading, spacing: 0) {
+                PanelHead(title: "Notes", meta: snapshot.isLocked ? "read-only" : "editable")
+                if snapshot.isLocked {
+                    Group {
+                        if snapshot.notes.isEmpty {
+                            Text("No notes recorded.")
+                                .font(Typo.serifItalic(12.5))
+                                .foregroundStyle(Color.lInk3)
+                        } else {
+                            Text(snapshot.notes)
+                                .font(Typo.serifItalic(13))
+                                .foregroundStyle(Color.lInk2)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .textSelection(.enabled)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(16)
+                } else {
+                    TextField(
+                        "Context, notable events, assumptions…",
+                        text: Binding(
+                            get: { snapshot.notes },
+                            set: { snapshot.notes = $0 }
+                        ),
+                        axis: .vertical
+                    )
+                    .textFieldStyle(.plain)
+                    .font(Typo.sans(12.5))
+                    .foregroundStyle(Color.lInk)
+                    .lineLimit(3...10)
+                    .padding(14)
+                    .background(Color.lSunken.opacity(0.5))
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.lLine, lineWidth: 1))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .padding(16)
+                }
+            }
+        }
     }
 
     private func errorBanner(_ err: String) -> some View {
@@ -359,7 +409,7 @@ struct SnapshotEditorView: View {
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
-    private func saveDraft() {
+    private func saveDraft(dismissAfter: Bool = false) {
         do {
             try context.save()
             saveError = nil
@@ -368,7 +418,7 @@ struct SnapshotEditorView: View {
                 try? await Task.sleep(nanoseconds: 900_000_000)
                 await MainActor.run {
                     withAnimation { showSavedToast = false }
-                    dismiss()
+                    if dismissAfter { dismiss() }
                 }
             }
         } catch {

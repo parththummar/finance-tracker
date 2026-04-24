@@ -10,6 +10,7 @@ struct NewSnapshotSheet: View {
     @State private var date: Date = Calendar.current.startOfDay(for: Date())
     @State private var rate: Double = 83.0
     @State private var copyPrevious: Bool = true
+    @State private var notes: String = ""
     @State private var errorMessage: String?
     @State private var isFetchingRate: Bool = false
     @State private var rateFetchedAt: Date?
@@ -23,6 +24,7 @@ struct NewSnapshotSheet: View {
 
             VStack(alignment: .leading, spacing: 18) {
                 grid
+                notesField
                 noticeBox
                 if let err = errorMessage {
                     HStack(spacing: 8) {
@@ -142,6 +144,17 @@ struct NewSnapshotSheet: View {
         }
     }
 
+    private var notesField: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text("NOTES")
+                .font(Typo.eyebrow).tracking(1.2).foregroundStyle(Color.lInk3)
+            TextField("Optional — context for this snapshot", text: $notes, axis: .vertical)
+                .textFieldStyle(.roundedBorder)
+                .font(Typo.sans(12))
+                .lineLimit(2...4)
+        }
+    }
+
     private var noticeBox: some View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: "info.circle.fill")
@@ -197,7 +210,7 @@ struct NewSnapshotSheet: View {
             return
         }
 
-        let snap = Snapshot(date: chosen, label: Fmt.date(chosen), usdToInrRate: rate)
+        let snap = Snapshot(date: chosen, label: Fmt.date(chosen), usdToInrRate: rate, notes: notes)
         context.insert(snap)
 
         let previous = snapshots.first

@@ -72,6 +72,7 @@ struct ResizableHeader: View {
                         .frame(maxWidth: .infinity,
                                alignment: ColAlignment.swiftUI(spec.alignment))
                         .lineLimit(1)
+                        .padding(.horizontal, 8)
                     if spec.resizable && idx < sizer.specs.count - 1 {
                         ResizeHandle(sizer: sizer, colID: spec.id)
                     }
@@ -99,6 +100,7 @@ struct ResizableCell<Content: View>: View {
             content()
                 .frame(maxWidth: .infinity,
                        alignment: ColAlignment.swiftUI(spec.alignment))
+                .padding(.horizontal, 8)
                 .applyWidth(spec: spec, sizer: sizer)
         )
     }

@@ -19,7 +19,9 @@ struct RootView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(Color.lBg)
             }
+            .frame(minWidth: 780)
         }
+        .frame(minWidth: 1000, minHeight: 640)
         .background(Color.lBg)
         .overlay(alignment: .bottom) { UndoToast() }
         .focusedSceneValue(\.appState, app)

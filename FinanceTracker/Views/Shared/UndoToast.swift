@@ -12,7 +12,34 @@ struct UndoToast: View {
 
     var body: some View {
         Group {
-            if let p = stash.pending {
+            if let err = stash.restoreError {
+                HStack(spacing: 10) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(Color.lLoss)
+                    Text(err)
+                        .font(Typo.sans(12, weight: .medium))
+                        .foregroundStyle(Color.lInk)
+                    Spacer(minLength: 8)
+                    Button {
+                        stash.clearRestoreError()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(Color.lInk3)
+                            .frame(width: 20, height: 20)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 14).padding(.vertical, 10)
+                .background(Color.lLossSoft.opacity(0.4))
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.lLoss.opacity(0.4), lineWidth: 1))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .shadow(color: .black.opacity(0.18), radius: 12, y: 6)
+                .frame(maxWidth: 480)
+                .padding(.bottom, 20)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            } else if let p = stash.pending {
                 HStack(spacing: 14) {
                     Image(systemName: "trash")
                         .font(.system(size: 11, weight: .semibold))

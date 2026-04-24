@@ -47,7 +47,18 @@ struct DashboardExportView: View {
 
         let idx = active.flatMap { a in sorted.firstIndex { $0.id == a.id } }
         self.prev = (idx.map { $0 > 0 ? sorted[$0 - 1] : nil }) ?? nil
-        self.yearAgo = (idx.map { $0 >= 4 ? sorted[$0 - 4] : nil }) ?? nil
+        self.yearAgo = {
+            guard let a = active else { return nil }
+            let oneYearAgo = Calendar.current.date(
+                byAdding: .year, value: -1, to: a.date)!
+            return sorted
+                .filter { $0.id != a.id && $0.date <= a.date }
+                .min(by: { abs($0.date.timeIntervalSince(oneYearAgo))
+                         < abs($1.date.timeIntervalSince(oneYearAgo)) })
+                .flatMap { s -> Snapshot? in
+                    abs(s.date.timeIntervalSince(oneYearAgo)) < 90 * 86400 ? s : nil
+                }
+        }()
 
         let target = displayCurrency
         func valueIn(_ v: AssetValue, rate: Double) -> Double {
@@ -59,10 +70,21 @@ struct DashboardExportView: View {
                 usdToInrRate: rate
             )
         }
+        func netValueIn(_ v: AssetValue, rate: Double) -> Double {
+            guard let acc = v.account else { return 0 }
+            let raw = CurrencyConverter.convert(
+                nativeValue: v.nativeValue,
+                from: acc.nativeCurrency,
+                to: target,
+                usdToInrRate: rate
+            )
+            let isDebt = acc.assetType?.category == .debt
+            return isDebt ? -abs(raw) : raw
+        }
         func total(_ s: Snapshot?) -> Double {
             guard let s else { return 0 }
             let rate = s.usdToInrRate
-            return s.values.reduce(0) { $0 + valueIn($1, rate: rate) }
+            return s.values.reduce(0) { $0 + netValueIn($1, rate: rate) }
         }
         func sumCats(_ s: Snapshot?, _ cats: [AssetCategory]) -> Double {
             guard let s else { return 0 }
@@ -95,7 +117,7 @@ struct DashboardExportView: View {
         let activeRate = active?.usdToInrRate ?? 0
         for v in active?.values ?? [] {
             guard let acc = v.account else { continue }
-            let amt = valueIn(v, rate: activeRate)
+            let amt = netValueIn(v, rate: activeRate)
             if let p = acc.person {
                 let col = Color.fromHex(p.colorHex) ?? Palette.fallback(for: p.name)
                 personBuckets[p.name, default: (0, col)].0 += amt
@@ -126,11 +148,11 @@ struct DashboardExportView: View {
             let prevRate = p.usdToInrRate
             var prevMap: [UUID: Double] = [:]
             for v in p.values where v.account != nil {
-                prevMap[v.account!.id] = valueIn(v, rate: prevRate)
+                prevMap[v.account!.id] = netValueIn(v, rate: prevRate)
             }
             for v in cur.values {
                 guard let acc = v.account else { continue }
-                let now = valueIn(v, rate: curRate)
+                let now = netValueIn(v, rate: curRate)
                 let before = prevMap[acc.id] ?? 0
                 let diff = now - before
                 let pct = before == 0 ? 0 : diff / abs(before) * 100

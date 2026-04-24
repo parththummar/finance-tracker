@@ -149,6 +149,27 @@ struct AccountHistoryView: View {
                             .foregroundStyle(Palette.deltaColor(d.abs))
                     }
                 }
+                if !account.institution.isEmpty || !account.notes.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        if !account.institution.isEmpty {
+                            HStack(spacing: 6) {
+                                Image(systemName: "building.columns")
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(Color.lInk3)
+                                Text(account.institution)
+                                    .font(Typo.sans(12))
+                                    .foregroundStyle(Color.lInk2)
+                            }
+                        }
+                        if !account.notes.isEmpty {
+                            Text(account.notes)
+                                .font(Typo.serifItalic(12.5))
+                                .foregroundStyle(Color.lInk2)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    .padding(.top, 4)
+                }
             }
             .padding(20)
         }

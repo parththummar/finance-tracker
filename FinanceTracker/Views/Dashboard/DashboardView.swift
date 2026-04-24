@@ -83,6 +83,8 @@ struct DashboardView: View {
         .onChange(of: app.activeSnapshotID) { _, _ in recompute() }
         .onChange(of: app.displayCurrency) { _, _ in recompute() }
         .onChange(of: snapshots.count) { _, _ in recompute() }
+        .onChange(of: snapshots.map { $0.isLocked }) { _, _ in recompute() }
+        .onChange(of: snapshots.map { $0.usdToInrRate }) { _, _ in recompute() }
     }
 
     private func recompute() {
@@ -258,8 +260,16 @@ struct DashboardView: View {
     }
 
     private var yearAgoSnapshot: Snapshot? {
-        guard let i = activeIdx, i >= 4 else { return nil }
-        return sortedAsc[i - 4]
+        guard let active = activeSnapshot else { return nil }
+        let oneYearAgo = Calendar.current.date(
+            byAdding: .year, value: -1, to: active.date)!
+        return sortedAsc
+            .filter { $0.id != active.id && $0.date <= active.date }
+            .min(by: { abs($0.date.timeIntervalSince(oneYearAgo))
+                     < abs($1.date.timeIntervalSince(oneYearAgo)) })
+            .flatMap { s -> Snapshot? in
+                abs(s.date.timeIntervalSince(oneYearAgo)) < 90 * 86400 ? s : nil
+            }
     }
 
     private var curTotal: Double  { cachedCurTotal }

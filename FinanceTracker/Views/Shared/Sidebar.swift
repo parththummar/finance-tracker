@@ -61,7 +61,7 @@ struct Sidebar: View {
             navRow(NavItem(screen: .settings, label: "Settings", icon: "gearshape"))
                 .padding(.bottom, 14)
         }
-        .frame(width: 240)
+        .frame(width: 220)
         .background(Color.lBg2)
         .overlay(Rectangle().frame(width: 1).foregroundStyle(Color.lLine), alignment: .trailing)
     }
@@ -78,11 +78,13 @@ struct Sidebar: View {
                 Text("Ledgerly")
                     .font(Typo.serifNum(19))
                     .foregroundStyle(Color.lInk)
+                    .lineLimit(1)
                 Text("Wealth · Offline")
                     .font(Typo.eyebrow)
                     .textCase(.uppercase)
                     .tracking(1.2)
                     .foregroundStyle(Color.lInk3)
+                    .lineLimit(1)
             }
         }
     }
@@ -100,6 +102,7 @@ struct Sidebar: View {
                 Text(item.label)
                     .font(Typo.sans(12.5, weight: active ? .semibold : .medium))
                     .foregroundStyle(active ? Color.lInk : Color.lInk2)
+                    .lineLimit(1)
                 Spacer()
             }
             .padding(.horizontal, 12)
