@@ -31,10 +31,11 @@ struct BreakdownView: View {
     @State private var historyAccount: Account?
     @Query private var accounts: [Account]
 
-    @State private var cachedRows: [Row] = []
     @State private var cachedSorted: [Row] = []
     @State private var cachedTiles: [TreemapTile] = []
     @State private var cachedTotal: Double = 0
+    @State private var cachedMagnitude: Double = 0
+    @State private var tableSearch: String = ""
     @StateObject private var sizer = ColumnSizer(tableID: "breakdown", specs: [
         ColumnSpec(id: "account", title: "Account", minWidth: 140, defaultWidth: 260, flex: true),
         ColumnSpec(id: "owner",   title: "Owner",   minWidth: 90,  defaultWidth: 150),
@@ -98,11 +99,16 @@ struct BreakdownView: View {
         let rows = computeRows()
         let sorted = rows.sorted { $0.display > $1.display }
         let total = rows.reduce(0) { $0 + $1.display }
+        let magnitude = rows.reduce(0) { $0 + abs($1.display) }
         let tiles = computeTiles(from: rows)
-        cachedRows = rows
         cachedSorted = sorted
         cachedTotal = total
+        cachedMagnitude = magnitude
         cachedTiles = tiles
+
+        let uniqueCcy = Array(Set(rows.map { $0.currency.rawValue })).sorted()
+        sizer.setTitle("native", uniqueCcy.isEmpty ? nil : "Native (\(uniqueCcy.joined(separator: "/")))")
+        sizer.setTitle("display", "Display (\(app.displayCurrency.rawValue))")
     }
 
     private var active: Snapshot? {
@@ -211,20 +217,26 @@ struct BreakdownView: View {
             }
         }
         return groups.map { (groupLabel, groupRows) in
-            let total = groupRows.map(\.display).reduce(0, +)
+            let magSum = groupRows.map { abs($0.display) }.reduce(0, +)
             let color = colorFor(group: groupLabel, key: groupBy, sample: groupRows.first)
-            let children = groupRows.sorted { $0.display > $1.display }
+            let groupDebt = !groupRows.isEmpty && groupRows.allSatisfy { $0.category == AssetCategory.debt.rawValue }
+            let children = groupRows.sorted { abs($0.display) > abs($1.display) }
                 .map { r in
                     TreemapTile(
                         label: r.name,
-                        value: max(r.display, 0.01),
+                        value: max(abs(r.display), 0.01),
                         color: color,
                         accountID: r.accountID,
                         nativeValue: r.nativeValue,
-                        nativeCurrency: r.currency
+                        nativeCurrency: r.currency,
+                        isDebt: r.category == AssetCategory.debt.rawValue
                     )
                 }
-            return TreemapTile(label: groupLabel, value: max(total, 0.01), color: color, children: children)
+            return TreemapTile(label: groupLabel,
+                               value: max(magSum, 0.01),
+                               color: color,
+                               isDebt: groupDebt,
+                               children: children)
         }
         .sorted { $0.value > $1.value }
     }
@@ -245,19 +257,19 @@ struct BreakdownView: View {
 
     private var treemapSection: some View {
         VStack(alignment: .leading, spacing: 0) {
-            PanelHead(title: "Treemap", meta: Fmt.compact(cachedTotal, app.displayCurrency))
+            PanelHead(title: "Distribution", meta: Fmt.compact(cachedTotal, app.displayCurrency))
             VStack(alignment: .leading, spacing: 10) {
-                TreemapView(
-                    tiles: cachedTiles,
-                    currency: app.displayCurrency,
-                    total: cachedTotal,
-                    onTap: { tile in handleTap(tile) },
-                    onHover: { tile in hovered = tile }
-                )
-                .frame(height: 460)
-                .background(Color.lSunken)
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.lLine, lineWidth: 1))
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+                if cachedTiles.isEmpty {
+                    filterEmptyState
+                } else {
+                    StackedBarsView(
+                        groups: cachedTiles,
+                        currency: app.displayCurrency,
+                        total: cachedMagnitude,
+                        onTap: { tile in handleTap(tile) },
+                        onHover: { tile in hovered = tile }
+                    )
+                }
 
                 if let h = hovered {
                     HStack {
@@ -275,6 +287,29 @@ struct BreakdownView: View {
             }
             .padding(18)
         }
+    }
+
+    @ViewBuilder
+    private var filterEmptyState: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("No accounts match current filters")
+                .font(Typo.sans(13, weight: .semibold))
+                .foregroundStyle(Color.lInk)
+            Text(filters.isEmpty
+                 ? "Active snapshot has no values to display."
+                 : "Remove a filter or switch groupings to see data.")
+                .font(Typo.serifItalic(12.5))
+                .foregroundStyle(Color.lInk3)
+            if !filters.isEmpty {
+                GhostButton(action: { filters.removeAll() }) { Text("Clear filters") }
+                    .padding(.top, 4)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(24)
+        .background(Color.lSunken)
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.lLine, lineWidth: 1))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
     private func handleTap(_ tile: TreemapTile) {
@@ -309,13 +344,60 @@ struct BreakdownView: View {
         let display: Double
     }
 
+    private var filteredRows: [Row] {
+        let q = tableSearch.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !q.isEmpty else { return cachedSorted }
+        return cachedSorted.filter { r in
+            r.name.lowercased().contains(q)
+                || r.person.lowercased().contains(q)
+                || r.countryName.lowercased().contains(q)
+                || r.assetType.lowercased().contains(q)
+                || r.category.lowercased().contains(q)
+        }
+    }
+
     private var tableSection: some View {
-        let rows = cachedSorted
+        let rows = filteredRows
         let total = cachedTotal
         return VStack(spacing: 0) {
-            PanelHead(title: "Accounts", meta: "\(rows.count) total")
+            PanelHead(title: "Accounts", meta: "\(rows.count) of \(cachedSorted.count)")
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(Color.lInk3)
+                TextField("Search name, owner, country, type", text: $tableSearch)
+                    .textFieldStyle(.plain)
+                    .font(Typo.sans(12))
+                    .foregroundStyle(Color.lInk)
+                if !tableSearch.isEmpty {
+                    Button { tableSearch = "" } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Color.lInk3)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 18).padding(.vertical, 8)
+            .overlay(Rectangle().frame(height: 1).foregroundStyle(Color.lLine), alignment: .bottom)
             VStack(spacing: 0) {
                 ResizableHeader(sizer: sizer)
+                if rows.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(tableSearch.isEmpty && filters.isEmpty
+                             ? "No accounts in active snapshot."
+                             : "No accounts match search or filters.")
+                            .font(Typo.sans(12.5, weight: .medium))
+                            .foregroundStyle(Color.lInk2)
+                        if !tableSearch.isEmpty || !filters.isEmpty {
+                            Text("Try clearing search or removing a filter.")
+                                .font(Typo.serifItalic(12))
+                                .foregroundStyle(Color.lInk3)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 18).padding(.vertical, 20)
+                }
                 ForEach(Array(rows.enumerated()), id: \.element.id) { i, r in
                     HStack(spacing: 0) {
                         ResizableCell(sizer: sizer, colID: "account") {

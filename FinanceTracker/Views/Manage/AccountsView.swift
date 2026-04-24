@@ -2,22 +2,26 @@ import SwiftUI
 import SwiftData
 
 struct AccountsView: View {
-    @Environment(\.modelContext) private var context
+    @EnvironmentObject var app: AppState
     @EnvironmentObject var undo: UndoStash
+    @Environment(\.modelContext) private var context
     @Query(sort: \Account.name) private var accounts: [Account]
+    @Query(sort: \Snapshot.date) private var snapshots: [Snapshot]
     @State private var editing: Account?
     @State private var creatingNew: Bool = false
-    @State private var confirmDelete: Account?
     @State private var showInactive: Bool = true
     @State private var historyAccount: Account?
+    @State private var confirmDelete: Account?
+    @State private var cachedTrends: [UUID: [Double]] = [:]
     @StateObject private var sizer = ColumnSizer(tableID: "accounts", specs: [
-        ColumnSpec(id: "name",    title: "Name",    minWidth: 140, defaultWidth: 260, flex: true),
+        ColumnSpec(id: "name",    title: "Name",    minWidth: 140, defaultWidth: 240, flex: true),
         ColumnSpec(id: "person",  title: "Person",  minWidth: 90,  defaultWidth: 130),
         ColumnSpec(id: "country", title: "Country", minWidth: 70,  defaultWidth: 100),
-        ColumnSpec(id: "type",    title: "Type",    minWidth: 100, defaultWidth: 150),
+        ColumnSpec(id: "type",    title: "Type",    minWidth: 100, defaultWidth: 140),
         ColumnSpec(id: "ccy",     title: "Ccy",     minWidth: 44,  defaultWidth: 60),
+        ColumnSpec(id: "trend",   title: "12mo",    minWidth: 70,  defaultWidth: 90),
         ColumnSpec(id: "status",  title: "Status",  minWidth: 70,  defaultWidth: 100),
-        ColumnSpec(id: "actions", title: "",        minWidth: 160, defaultWidth: 160, alignment: .trailing, resizable: false),
+        ColumnSpec(id: "actions", title: "",        minWidth: 140, defaultWidth: 140, alignment: .trailing, resizable: false),
     ])
 
     private var visible: [Account] {
@@ -48,19 +52,41 @@ struct AccountsView: View {
         .confirmationDialog("Delete \(confirmDelete?.name ?? "")?",
                             isPresented: Binding(get: { confirmDelete != nil }, set: { if !$0 { confirmDelete = nil } }),
                             titleVisibility: .visible) {
-            Button("Delete", role: .destructive) {
+            Button("Delete permanently", role: .destructive) {
                 if let a = confirmDelete {
                     let cap = undo.capture(account: a)
                     context.delete(a)
-                    try? context.save()
-                    undo.stash(.account(cap))
+                    do {
+                        try context.save()
+                        undo.stash(.account(cap))
+                    } catch {
+                        context.rollback()
+                    }
                 }
                 confirmDelete = nil
             }
             Button("Cancel", role: .cancel) { confirmDelete = nil }
         } message: {
-            Text("Account and all \(confirmDelete?.values.count ?? 0) historical values across snapshots will be deleted.")
+            Text("Account and all \(confirmDelete?.values.count ?? 0) historical values across snapshots will be deleted. You have 10 seconds to undo.")
         }
+        .onAppear { recomputeTrends() }
+        .onChange(of: snapshots.count) { _, _ in recomputeTrends() }
+        .onChange(of: accounts.count) { _, _ in recomputeTrends() }
+        .onChange(of: app.displayCurrency) { _, _ in recomputeTrends() }
+    }
+
+    private func recomputeTrends() {
+        let cutoff = Calendar.current.date(byAdding: .month, value: -12, to: .now) ?? .distantPast
+        let recent = snapshots.filter { $0.date >= cutoff }.sorted { $0.date < $1.date }
+        var out: [UUID: [Double]] = [:]
+        for a in accounts {
+            let series = recent.compactMap { s -> Double? in
+                guard let v = s.values.first(where: { $0.account?.id == a.id }) else { return nil }
+                return CurrencyConverter.netDisplayValue(for: v, in: app.displayCurrency)
+            }
+            out[a.id] = series
+        }
+        cachedTrends = out
     }
 
     private var header: some View {
@@ -156,6 +182,14 @@ struct AccountsView: View {
                     .font(Typo.mono(11))
                     .foregroundStyle(Color.lInk3)
             }
+            ResizableCell(sizer: sizer, colID: "trend") {
+                let series = cachedTrends[a.id] ?? []
+                let up = series.count >= 2 ? (series.last! >= series.first!) : true
+                Sparkline(values: series,
+                          stroke: series.count < 2 ? Color.lInk3 : (up ? Color.lGain : Color.lLoss),
+                          fill: (up ? Color.lGain : Color.lLoss).opacity(0.08))
+                    .frame(height: 18)
+            }
             ResizableCell(sizer: sizer, colID: "status") {
                 HStack {
                     Pill(text: a.isActive ? "active" : "retired", emphasis: a.isActive)
@@ -171,11 +205,12 @@ struct AccountsView: View {
                     GhostButton(action: { editing = a }) { Text("Edit") }
                     Menu {
                         Button("Show History") { historyAccount = a }
-                        Button(a.isActive ? "Retire" : "Reactivate") {
+                        Button(a.isActive ? "Archive (Retire)" : "Reactivate") {
                             a.isActive.toggle()
                             try? context.save()
                         }
-                        Button("Delete…", role: .destructive) {
+                        Divider()
+                        Button("Delete permanently…", role: .destructive) {
                             confirmDelete = a
                         }
                     } label: {

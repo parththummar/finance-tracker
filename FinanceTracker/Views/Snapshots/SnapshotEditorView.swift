@@ -70,10 +70,33 @@ struct SnapshotEditorView: View {
         }
         .background(Color.lBg)
         .frame(minWidth: 980, minHeight: 680)
+        .overlay(alignment: .top) {
+            if showSavedToast {
+                HStack(spacing: 8) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(Color.lGain)
+                    Text("Draft saved")
+                        .font(Typo.sans(12.5, weight: .semibold))
+                        .foregroundStyle(Color.lInk)
+                }
+                .padding(.horizontal, 14).padding(.vertical, 9)
+                .background(Color.lPanel)
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.lLine, lineWidth: 1))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .shadow(color: .black.opacity(0.15), radius: 10, y: 4)
+                .padding(.top, 14)
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .animation(.easeInOut(duration: 0.2), value: showSavedToast)
         .confirmationDialog("Lock \(snapshot.label)?",
                             isPresented: $confirmingLock,
                             titleVisibility: .visible) {
             Button("Lock Snapshot", role: .destructive) {
+                guard snapshot.usdToInrRate > 0 else {
+                    saveError = "Exchange rate must be positive before locking."
+                    return
+                }
                 snapshot.isLocked = true
                 snapshot.lockedAt = .now
                 try? context.save()
@@ -166,6 +189,11 @@ struct SnapshotEditorView: View {
                     .disabled(isFetchingRate)
                     .buttonStyle(.plain)
                     .help("Fetch USD→INR for \(Fmt.date(snapshot.date)) from frankfurter.app")
+                }
+                if snapshot.usdToInrRate <= 0 {
+                    Text("Rate must be > 0")
+                        .font(Typo.mono(10, weight: .medium))
+                        .foregroundStyle(Color.lLoss)
                 }
             }
         }
@@ -320,14 +348,6 @@ struct SnapshotEditorView: View {
                     Text("Delete")
                 }
             }
-            if showSavedToast {
-                HStack(spacing: 6) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(Color.lGain)
-                    Text("Saved").font(Typo.sans(12)).foregroundStyle(Color.lInk2)
-                }
-                .transition(.opacity)
-            }
             Spacer()
             GhostButton(action: { dismiss() }) { Text("Close") }
             if !snapshot.isLocked {
@@ -349,6 +369,9 @@ struct SnapshotEditorView: View {
                         Text("Lock Snapshot")
                     }
                 }
+                .disabled(snapshot.usdToInrRate <= 0)
+                .opacity(snapshot.usdToInrRate <= 0 ? 0.5 : 1)
+                .help(snapshot.usdToInrRate <= 0 ? "Set a positive USD→INR rate first" : "Freeze this snapshot")
             }
         }
         .padding(.horizontal, 24).padding(.vertical, 16)
@@ -410,12 +433,16 @@ struct SnapshotEditorView: View {
     }
 
     private func saveDraft(dismissAfter: Bool = false) {
+        guard snapshot.usdToInrRate > 0 else {
+            saveError = "Exchange rate must be positive before saving."
+            return
+        }
         do {
             try context.save()
             saveError = nil
             withAnimation { showSavedToast = true }
             Task {
-                try? await Task.sleep(nanoseconds: 900_000_000)
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
                 await MainActor.run {
                     withAnimation { showSavedToast = false }
                     if dismissAfter { dismiss() }

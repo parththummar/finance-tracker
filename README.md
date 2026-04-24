@@ -112,7 +112,7 @@ FinanceTracker/FinanceTracker/
     RootView
     Dashboard/        DashboardView, HeadlineCard, DistributionCard,
                       NetWorthChart, MoversCard
-    Breakdown/        BreakdownView, TreemapView, TreemapLayout
+    Breakdown/        BreakdownView, StackedBarsView
     Snapshots/        SnapshotListView, SnapshotEditorView, NewSnapshotSheet
     Manage/           AccountsView, AccountEditorSheet, AccountHistoryView,
                       PeopleView, PersonEditorSheet,

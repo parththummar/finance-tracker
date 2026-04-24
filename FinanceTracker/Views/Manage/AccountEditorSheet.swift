@@ -7,6 +7,7 @@ struct AccountEditorSheet: View {
     @Query(sort: \Person.name) private var people: [Person]
     @Query(sort: \Country.code) private var countries: [Country]
     @Query(sort: \AssetType.name) private var assetTypes: [AssetType]
+    @Query(sort: \Account.name) private var allAccounts: [Account]
 
     let existing: Account?
 
@@ -26,6 +27,17 @@ struct AccountEditorSheet: View {
 
             Form {
                 TextField("Name", text: $name)
+
+                if let warn = duplicateWarning {
+                    HStack(spacing: 6) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(Color.lLoss)
+                            .font(.system(size: 10))
+                        Text(warn)
+                            .font(Typo.sans(11))
+                            .foregroundStyle(Color.lLoss)
+                    }
+                }
 
                 Picker("Person", selection: $personID) {
                     Text("—").tag(UUID?.none)
@@ -73,6 +85,20 @@ struct AccountEditorSheet: View {
         .onAppear(perform: prefill)
     }
 
+    private var duplicateWarning: String? {
+        let trimmed = name.trimmingCharacters(in: .whitespaces).lowercased()
+        guard trimmed.count >= 2 else { return nil }
+        let dups = allAccounts.filter {
+            $0.id != existing?.id && $0.name.lowercased() == trimmed
+        }
+        guard !dups.isEmpty else { return nil }
+        let owners = Array(Set(dups.compactMap { $0.person?.name })).sorted()
+        if owners.isEmpty {
+            return "Another account already uses this name."
+        }
+        return "Name already used by: \(owners.joined(separator: ", "))."
+    }
+
     private func prefill() {
         guard let a = existing else { return }
         name = a.name
@@ -91,6 +117,16 @@ struct AccountEditorSheet: View {
         guard let p = people.first(where: { $0.id == personID }) else { errorMessage = "Pick person."; return }
         guard let c = countries.first(where: { $0.id == countryID }) else { errorMessage = "Pick country."; return }
         guard let t = assetTypes.first(where: { $0.id == assetTypeID }) else { errorMessage = "Pick asset type."; return }
+
+        let hardDup = allAccounts.contains {
+            $0.id != existing?.id
+                && $0.name.lowercased() == trimmed.lowercased()
+                && $0.person?.id == p.id
+        }
+        if hardDup {
+            errorMessage = "\(p.name) already owns an account named “\(trimmed)”."
+            return
+        }
 
         if let a = existing {
             a.name = trimmed

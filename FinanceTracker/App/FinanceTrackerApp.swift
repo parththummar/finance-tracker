@@ -4,6 +4,8 @@ import SwiftData
 @main
 struct FinanceTrackerApp: App {
     let container: ModelContainer
+    @StateObject private var app = AppState()
+    @StateObject private var undo = UndoStash()
 
     init() {
         FontRegistrar.registerIfNeeded()
@@ -24,8 +26,9 @@ struct FinanceTrackerApp: App {
     var body: some Scene {
         WindowGroup {
             RootView()
-                .environmentObject(AppState())
-                .environmentObject(UndoStash())
+                .environmentObject(app)
+                .environmentObject(undo)
+                .preferredColorScheme(app.preferredColorScheme)
         }
         .modelContainer(container)
         .defaultSize(width: 1400, height: 1000)

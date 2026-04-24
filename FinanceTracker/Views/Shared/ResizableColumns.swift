@@ -16,6 +16,7 @@ final class ColumnSizer: ObservableObject {
     let tableID: String
     let specs: [ColumnSpec]
     @Published private(set) var widths: [String: CGFloat] = [:]
+    @Published private(set) var titleOverrides: [String: String] = [:]
 
     init(tableID: String, specs: [ColumnSpec]) {
         self.tableID = tableID
@@ -24,6 +25,14 @@ final class ColumnSizer: ObservableObject {
             let stored = UserDefaults.standard.double(forKey: Self.key(tableID, s.id))
             widths[s.id] = stored > 0 ? max(stored, s.minWidth) : s.defaultWidth
         }
+    }
+
+    func setTitle(_ id: String, _ title: String?) {
+        if let title { titleOverrides[id] = title } else { titleOverrides.removeValue(forKey: id) }
+    }
+
+    func title(for id: String) -> String {
+        titleOverrides[id] ?? specs.first(where: { $0.id == id })?.title ?? id
     }
 
     private static func key(_ tableID: String, _ colID: String) -> String {
@@ -66,7 +75,7 @@ struct ResizableHeader: View {
         HStack(spacing: 0) {
             ForEach(Array(sizer.specs.enumerated()), id: \.element.id) { idx, spec in
                 ZStack(alignment: .trailing) {
-                    Text(spec.title)
+                    Text(sizer.title(for: spec.id))
                         .font(Typo.eyebrow).tracking(1.2)
                         .foregroundStyle(Color.lInk3)
                         .frame(maxWidth: .infinity,

@@ -42,6 +42,52 @@ struct PanelHead: View {
     }
 }
 
+// MARK: - Sparkline
+
+struct Sparkline: View {
+    let values: [Double]
+    var stroke: Color = .lInk
+    var fill: Color = .lInk.opacity(0.08)
+    var lineWidth: CGFloat = 1.2
+
+    var body: some View {
+        GeometryReader { geo in
+            let w = geo.size.width
+            let h = geo.size.height
+            if values.count < 2 {
+                Path { p in
+                    p.move(to: CGPoint(x: 0, y: h / 2))
+                    p.addLine(to: CGPoint(x: w, y: h / 2))
+                }
+                .stroke(Color.lInk4, style: StrokeStyle(lineWidth: 1, dash: [2, 2]))
+            } else {
+                let minV = values.min() ?? 0
+                let maxV = values.max() ?? 1
+                let rng = max(maxV - minV, 0.0001)
+                let pts: [CGPoint] = values.enumerated().map { (i, v) in
+                    let x = Double(i) / Double(values.count - 1) * w
+                    let y = h - (v - minV) / rng * h
+                    return CGPoint(x: x, y: max(1, min(h - 1, y)))
+                }
+                ZStack {
+                    Path { p in
+                        p.move(to: CGPoint(x: pts[0].x, y: h))
+                        for pt in pts { p.addLine(to: pt) }
+                        p.addLine(to: CGPoint(x: pts.last!.x, y: h))
+                        p.closeSubpath()
+                    }
+                    .fill(fill)
+                    Path { p in
+                        p.move(to: pts[0])
+                        for pt in pts.dropFirst() { p.addLine(to: pt) }
+                    }
+                    .stroke(stroke, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round, lineJoin: .round))
+                }
+            }
+        }
+    }
+}
+
 // MARK: - Editorial empty state
 
 struct EditorialEmpty: View {

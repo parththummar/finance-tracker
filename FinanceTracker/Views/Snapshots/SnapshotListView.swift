@@ -9,6 +9,7 @@ struct SnapshotListView: View {
     @State private var editing: Snapshot?
     @State private var showingNew = false
     @State private var confirmDelete: Snapshot?
+    @State private var confirmUnlock: Snapshot?
     @StateObject private var sizer = ColumnSizer(tableID: "snapshots", specs: [
         ColumnSpec(id: "snap",    title: "Snapshot", minWidth: 140, defaultWidth: 260, flex: true),
         ColumnSpec(id: "date",    title: "Date",     minWidth: 110, defaultWidth: 150),
@@ -101,6 +102,21 @@ struct SnapshotListView: View {
         } message: {
             Text("All \(confirmDelete?.values.count ?? 0) asset values recorded in this snapshot will also be deleted.")
         }
+        .confirmationDialog("Unlock \(confirmUnlock?.label ?? "")?",
+                            isPresented: Binding(get: { confirmUnlock != nil }, set: { if !$0 { confirmUnlock = nil } }),
+                            titleVisibility: .visible) {
+            Button("Unlock", role: .destructive) {
+                if let s = confirmUnlock {
+                    s.isLocked = false
+                    s.lockedAt = nil
+                    try? context.save()
+                }
+                confirmUnlock = nil
+            }
+            Button("Cancel", role: .cancel) { confirmUnlock = nil }
+        } message: {
+            Text("Values and exchange rate become editable again. Re-lock after amending.")
+        }
     }
 
     private func row(idx: Int, s: Snapshot) -> some View {
@@ -144,11 +160,7 @@ struct SnapshotListView: View {
                     GhostButton(action: { editing = s }) { Text("Open") }
                     Menu {
                         if s.isLocked {
-                            Button("Unlock") {
-                                s.isLocked = false
-                                s.lockedAt = nil
-                                try? context.save()
-                            }
+                            Button("Unlock…") { confirmUnlock = s }
                         }
                         Button("Set active") { app.activeSnapshotID = s.id }
                         Button("Delete…", role: .destructive) { confirmDelete = s }
