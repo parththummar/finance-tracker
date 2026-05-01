@@ -1,182 +1,117 @@
 # FinanceTracker (Ledgerly)
 
-Offline personal wealth tracker for macOS. SwiftUI + SwiftData. 100% local — no cloud, no account, no dev license required.
+Offline personal wealth tracker for **macOS**. Built with **SwiftUI** and **SwiftData**. Everything stays on your machine — no cloud service, no subscription, and no Apple Developer Program account is required to build and run locally.
 
-Multi-person, multi-country, multi-currency (USD / INR). Snapshot-based history. Charts-first UI.
-
----
-
-## Features
-
-### Data Model
-- Entities: Person, Country, AssetType, Account, Snapshot, AssetValue, ExchangeRateHistory.
-- 6 asset categories: Cash, Investment, Retirement, Crypto, Insurance, Debt.
-- Cascade-aware deletes with count warnings.
-
-### Snapshots
-- Date-based point-in-time net worth records (no quarter logic).
-- Future dates blocked; 7-day minimum gap between snapshots.
-- **Per-snapshot USD↔INR rate** locked at creation; historical rates never overwritten.
-- Copy-previous-values toggle on create; prefills all active accounts.
-- Lock / Unlock states. Locked snapshots read-only.
-- Delete with cascade confirmation.
-
-### Snapshot Editor
-- Inline edit native value per account.
-- **PREV** + **Δ** columns (colored green/red) vs previous snapshot.
-- **Live TOTAL footer** in display currency — updates as you type. Shows prev total, delta, current total.
-- **Save Draft** with green ✓ toast confirmation.
-- **Delete Snapshot** button.
-- Zebra striping.
-
-### Live FX Fetch
-- One-click USD→INR fetch from frankfurter.app (no API key).
-- Historical date support — past snapshots pull rate for their actual date.
-- Never touches locked snapshots.
-
-### Dashboard
-- Headline card: current net worth, QoQ/YoY delta chips, sparkline.
-- Three distribution cards (By Person, By Country, By Category) — each toggles donut ↔ bar independently. Preference persists.
-- Net worth chart: line / stacked-area toggle across all snapshots.
-- Movers card: top 5 gainers + decliners between last two snapshots.
-- Display currency picker (USD/INR) — recalculates whole UI.
-- Label mode: $ / % / Both.
-
-### Breakdown + Treemap
-- Squarified treemap grouped by Category / Person / Country / Type.
-- Click parent tile → filter. Click account tile → opens Account History chart.
-- Filter chips with clear-all.
-- Accounts table below with percent-of-total column.
-
-### Account History Chart
-- Right-click, double-click, chart icon, or ⋯ menu on any account row.
-- Line + area chart of that account's value over all snapshots.
-- Native ↔ display currency toggle (hidden if same).
-- Total change $ + % since first snapshot.
-- Full snapshot table with per-row delta.
-
-### Color Customization
-- Per-person, per-country, per-category (via Settings).
-- Applied everywhere: charts, treemap, manage-tables color swatches.
-- Reset-to-defaults for categories.
-
-### Management (CRUD)
-- People, Countries, Asset Types, Accounts.
-- Retire / Reactivate accounts (retired excluded from new snapshots; history preserved).
-- Show-retired toggle in accounts list.
-- Cascade-aware delete warnings.
-
-### CSV Export
-- **Full history** — flat (snapshot × account): person, country, type, category, native + USD + INR.
-- **Accounts list**.
-- **Snapshot totals** — one row per snapshot.
-- RFC 4180 escaping.
-
-### PDF Export
-- Dashboard → PDF (ImageRenderer + CGContext) via save panel.
-
-### Reminders
-- Local macOS notification when latest snapshot is >90 days old.
-- Scheduled at launch. Toggleable in Settings.
-
-### Settings
-- Display prefs: currency, theme (System/Light/Dark), label mode.
-- Category colors with reset.
-- CSV + PDF export.
-- **Data**: show database path, Reveal in Finder, Backup database (copies .store + wal + shm), Reset all data (wipe + re-seed).
-- Reminder toggle.
-
-### Shell
-- NavigationSplitView sidebar + detail.
-- Top bar: currency, snapshot picker, New Snapshot, Export menu, label mode, theme toggle.
-- Min window 1100×1000.
-- First-launch seed: 2 people, 2 countries, 13 asset types, 15 accounts, 2 sample snapshots.
-
-### Custom App Icon
-- Generated via Swift script (`scripts/GenerateIcon.swift`). Squircle, warm-ink gradient, green sparkline, italic serif L, dot + glow. All sizes 16–1024px.
+Supports multiple people, countries, and currencies (notably **USD** and **INR**). Net worth is tracked through **snapshots** (point-in-time records) with charts-first navigation.
 
 ---
 
-## Project Layout
+## Features (high level)
 
-All source lives in the Xcode project at `FinanceTracker/FinanceTracker/`:
+| Area | What it does |
+|------|----------------|
+| **Dashboard** | Headline net worth, QoQ/YoY hints, sparkline, distribution cards (person / country / category), movers, net worth history |
+| **Allocation (Breakdown)** | Stacked bars view, filters, accounts table with % of total |
+| **Trends** | Time-series views for exploring change across snapshots |
+| **Snapshots** | List, create, lock/unlock, edit per-account values with live totals and deltas vs previous snapshot |
+| **Diff** (`⌘⇧D`) | Snapshot diff between two dates |
+| **Reports** | Printable / export-oriented reporting flows |
+| **Manage** | CRUD for people, countries, asset types, **accounts**, and **receivables** (money owed to you) |
+| **Settings** | Display currency, theme, labels, colors, CSV/PDF paths, backups, reminders, database path |
+
+**FX**: Live **USD→INR** fetch via [frankfurter.app](https://www.frankfurter.app/) (no API key). Rates can be pinned per snapshot; locked snapshots are not rewritten.
+
+**Data safety**: Manual and automatic SQLite backups, optional restore on launch, quit-time backup hook.
+
+---
+
+## Data model (SwiftData)
+
+Core entities:
+
+- `Person`, `Country`, `AssetType`, `Account`, `Snapshot`, `AssetValue`
+- `Receivable`, `ReceivableValue` — receivables and their per-snapshot balances
+- `ExchangeRateHistory` — cached FX history
+
+Asset categories (see `Enums.swift`): Cash, Investment, Retirement, Crypto, Insurance, Debt.
+
+---
+
+## Requirements
+
+- **macOS** matching the project’s deployment target (see **Xcode → target → General → Minimum Deployments**; currently set in the project to a recent macOS SDK).
+- **Xcode** with Swift 5 (project uses Swift 5.0 setting).
+
+---
+
+## Run from source
+
+1. Install **Xcode** from the Mac App Store and open it once to accept the license.
+2. Open **`FinanceTracker.xcodeproj`** at the repository root.
+3. **Signing**: for local runs, you can use **Sign to Run Locally** or **Team: None** as appropriate for your machine.
+4. **App Sandbox** (typical for this app):
+   - **User Selected File** → **Read/Write** (CSV/PDF save panels, backups).
+   - **Outgoing Connections (Client)** (FX fetch).
+5. Select the **My Mac** destination and press **⌘R**.
+
+On first launch with an empty store, **`SeedData`** inserts sample people, countries, asset types, accounts, and snapshots.
+
+---
+
+## Repository layout
 
 ```
-FinanceTracker/FinanceTracker/
-  FinanceTrackerApp.swift
-  App/                FinanceTrackerApp (entry, ModelContainer, reminder check)
-  Models/             Person, Country, AssetType, Account, Snapshot, AssetValue,
-                      Enums, SeedData
-  ViewModels/         AppState
-  Views/
-    RootView
-    Dashboard/        DashboardView, HeadlineCard, DistributionCard,
-                      NetWorthChart, MoversCard
-    Breakdown/        BreakdownView, StackedBarsView
-    Snapshots/        SnapshotListView, SnapshotEditorView, NewSnapshotSheet
-    Manage/           AccountsView, AccountEditorSheet, AccountHistoryView,
-                      PeopleView, PersonEditorSheet,
-                      CountriesView, CountryEditorSheet,
-                      AssetTypesView, AssetTypeEditorSheet
-    Settings/         SettingsView
-    Shared/           TopBar, Sidebar
-  Utils/              CurrencyConverter, CSVExporter, FXService, Formatters,
-                      ReminderScheduler, Theme
-  Assets.xcassets/    AppIcon + colors
-scripts/
-  GenerateIcon.swift  Programmatic app-icon generator
+FinanceTracker.xcodeproj/     Xcode project
+FinanceTracker/
+  App/                       App entry, model container, window commands, delegates
+  Models/                    SwiftData @Model types, enums, seed data
+  ViewModels/                AppState (global UI prefs + navigation)
+  Views/                     Screens: Dashboard, Breakdown, Trends, Snapshots, …
+  Utils/                     FX, CSV, PDF, backups, formatters, theme, undo stash
+  Assets.xcassets/           App icons and colors
 ```
 
 ---
 
-## Run From Source
+## Where data lives
 
-### 1. Install Xcode
-Mac App Store → search "Xcode" → install (free, ~15 GB). Open once, accept license.
+Sandboxed installs store the SQLite file under the app’s container, for example:
 
-### 2. Open Project
-Open `FinanceTracker/FinanceTracker.xcodeproj` in Xcode.
+`~/Library/Containers/com.parththummar.FinanceTracker/Data/Library/Application Support/default.store`
 
-### 3. Required Capabilities (Signing & Capabilities tab)
-1. **Signing** → Team: **None** (no dev account needed — runs locally unsigned).
-2. **App Sandbox** → **File Access** → **User Selected File** → **Read/Write** (CSV / PDF export + backup).
-3. **App Sandbox** → **Network** → check **Outgoing Connections (Client)** (live FX fetch).
-4. No notification entitlement needed — local notifications work unsigned.
+Use **Settings** to reveal the path, run **Backup database**, or copy the `.store` (and associated `-wal`/`-shm` if present when the app is quit).
 
-### 4. Generate App Icon (one-time, or after icon tweaks)
+Bundle identifier is defined in Xcode as **`com.parththummar.FinanceTracker`** — if you change it, the container path changes accordingly.
+
+---
+
+## Export
+
+- **CSV**: Full history, accounts list, snapshot totals, and **receivable rows** per snapshot (see `CSVExporter`).
+- **PDF**: Dashboard snapshot via `DashboardPDFExporter`; snapshot-detail PDF via `SnapshotPDFExporter`.
+
+---
+
+## Stack notes
+
+- **SwiftData** on SQLite. Lightweight schema tweaks often auto-migrate; there is no custom migration versioning layer in-repo.
+- **@AppStorage** for many UI preferences; **UserDefaults** for some overrides (e.g. category colors).
+- **Swift Charts** for donut, line, area, and bar visuals.
+- **Local notifications** for stale snapshot reminders (`ReminderScheduler`).
+- Menu commands wire through **`focusedSceneValue`** for `AppState`, `UndoStash`, and `ModelContext` (see `AppCommands.swift` and `RootView`).
+
+---
+
+## Sharing a release build
+
+1. Scheme → **Run** → **Build Configuration**: Release (for a lean binary).
+2. **Product → Archive**, then distribute (e.g. **Copy App**).
+
+Unsigned builds trigger **Gatekeeper** warnings on other Macs until the user uses **Right-click → Open** or adjusts **Privacy & Security**. Notarized distribution requires a paid Apple Developer account.
+
+**Wrap in a DMG (quick `hdiutil` example)**
+
 ```bash
-swift "scripts/GenerateIcon.swift" "FinanceTracker/FinanceTracker/Assets.xcassets/AppIcon.appiconset"
-```
-Xcode → Assets.xcassets → AppIcon → verify 10 slots filled.
-
-### 5. Run
-- Scheme target → **My Mac** → **⌘R**.
-- Seed data (2 people, 2 countries, 13 asset types, 15 accounts, 2 snapshots) loads on first launch if DB empty.
-
----
-
-## Data Location
-
-```
-~/Library/Containers/com.yourname.FinanceTracker/Data/Library/Application Support/default.store
-```
-
-SQLite file. Backup that file (or use Settings → **Backup database**) = full backup.
-
----
-
-## Distribution (share with friends, no dev account)
-
-### Build Release .app
-1. Edit Scheme → Run → **Build Configuration: Release**.
-2. Target → Build Settings → **Architectures** → `Standard (arm64, x86_64)` for universal build.
-3. **Product → Archive** → Organizer → **Distribute App** → **Copy App** → save to Desktop.
-
-### Wrap as DMG
-
-**Quick (built-in hdiutil):**
-```bash
-cd ~/Desktop
 mkdir FinanceTracker-dmg
 cp -R FinanceTracker.app FinanceTracker-dmg/
 ln -s /Applications FinanceTracker-dmg/Applications
@@ -203,24 +138,25 @@ Unsigned path is free but shows "unidentified developer" warning. Clean distribu
 
 ---
 
-## Stack Notes
+## Troubleshooting
 
-- **SwiftData** on SQLite. Adding optional attributes auto-migrates; schema versioning not wired.
-- **@AppStorage** for UI prefs; **UserDefaults** for category color overrides + reminder toggle.
-- **Swift Charts** for donut (SectorMark), line, area, bar.
-- **Squarified treemap** (Bruls/Huijsen/van Wijk 2000).
-- **frankfurter.app** for free FX (no key, historical endpoint `/YYYY-MM-DD`).
-- **UNUserNotificationCenter** for local reminders.
-- **ImageRenderer + CGContext** for PDF export.
+| Symptom | Check |
+|---------|--------|
+| Save panel / export failures | Sandbox **User Selected File** must allow **Read/Write** |
+| FX never updates | Sandbox **Outgoing Connections (Client)** |
+| No reminder notifications | **System Settings → Notifications** for the app |
+| Wrong data folder after fork | Bundle ID / container path (see above) |
 
 ---
 
-## Troubleshooting
+## License
 
-| Issue | Fix |
-|-------|-----|
-| "Can't display save panel" crash | Sandbox entitlement must be **User Selected File Read/Write**, not Read-Only |
-| FX fetch fails silently | Enable **Outgoing Connections (Client)** in Sandbox |
-| Notification never appears | System Settings → Notifications → FinanceTracker → allow |
-| App icon blank | Rerun `swift scripts/GenerateIcon.swift <path>` and verify Assets.xcassets populated |
-| `escape` main-actor isolation error | Mark `CSVExporter.escape` / `encode` `nonisolated` (already done) |
+Proprietary — **all rights reserved**. Use, redistribution, modification, derivative works, and repurposing are **not** permitted without **written approval** from the copyright holder. See [`LICENSE`](LICENSE).
+
+## Changelog
+
+Release notes are in [`CHANGELOG.md`](CHANGELOG.md).
+
+## AI assistants
+
+[`AGENTS.md`](AGENTS.md) summarizes how agents should work in this repo; [`CLAUDE.md`](CLAUDE.md) has deeper technical context. Cursor loads rules from **`.cursor/rules/`**.
