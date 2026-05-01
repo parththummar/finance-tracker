@@ -155,6 +155,7 @@ struct TopBar: View {
         case .people:     return "By Person"
         case .countries:  return "By Country"
         case .assetTypes: return "By Asset Type"
+        case .receivables: return "Receivables"
         case .settings:   return "Settings"
         }
     }

@@ -149,6 +149,9 @@ struct SnapshotPDFView: View {
             cards
             categoryTable
             accountsTable
+            if !snapshot.receivableValues.isEmpty {
+                receivablesTable
+            }
             footer
         }
         .padding(36)
@@ -276,6 +279,49 @@ struct SnapshotPDFView: View {
                     }
                     .font(Typo.mono(11))
                     .frame(width: 110, alignment: .trailing)
+                }
+                .padding(.vertical, 3)
+                Divider().overlay(Color.lLine.opacity(0.5))
+            }
+        }
+    }
+
+    private var receivablesTable: some View {
+        let total = CurrencyConverter.receivableDisplaySum(snapshot, in: ccy)
+        let rows = snapshot.receivableValues.sorted {
+            ($0.receivable?.name ?? "").localizedCaseInsensitiveCompare($1.receivable?.name ?? "") == .orderedAscending
+        }
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("PENDING RECEIVABLES · NOT IN NET WORTH")
+                    .font(Typo.eyebrow).tracking(1.2).foregroundStyle(Color.lInk3)
+                Spacer()
+                Text("Total \(Fmt.compact(total, ccy))")
+                    .font(Typo.mono(11, weight: .semibold))
+                    .foregroundStyle(Color.lInk2)
+            }
+            HStack {
+                Text("RECEIVABLE").frame(maxWidth: .infinity, alignment: .leading)
+                Text("DEBTOR").frame(width: 140, alignment: .leading)
+                Text("NATIVE").frame(width: 130, alignment: .trailing)
+                Text("DISPLAY").frame(width: 110, alignment: .trailing)
+            }
+            .font(Typo.eyebrow).tracking(1.0).foregroundStyle(Color.lInk3)
+            ForEach(rows, id: \.id) { rv in
+                let r = rv.receivable
+                let display = CurrencyConverter.displayValue(for: rv, in: ccy)
+                HStack {
+                    Text(r?.name ?? "—").font(Typo.sans(12, weight: .medium))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Text(r?.debtor.isEmpty == false ? r!.debtor : "—")
+                        .font(Typo.sans(11)).foregroundStyle(Color.lInk2)
+                        .frame(width: 140, alignment: .leading)
+                    Text(Fmt.compact(rv.nativeValue, r?.nativeCurrency ?? .USD))
+                        .font(Typo.mono(11)).foregroundStyle(Color.lInk2)
+                        .frame(width: 130, alignment: .trailing)
+                    Text(Fmt.compact(display, ccy))
+                        .font(Typo.mono(12, weight: .semibold))
+                        .frame(width: 110, alignment: .trailing)
                 }
                 .padding(.vertical, 3)
                 Divider().overlay(Color.lLine.opacity(0.5))

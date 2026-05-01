@@ -76,6 +76,12 @@ struct AccountDetailSheet: View {
         .sheet(item: $editing) { _ in
             AccountEditorSheet(existing: account)
         }
+        .overlay(alignment: .topLeading) {
+            Button("") { dismiss() }
+                .keyboardShortcut(.cancelAction)
+                .hidden()
+                .frame(width: 0, height: 0)
+        }
     }
 
     // MARK: - Header

@@ -51,4 +51,18 @@ enum CurrencyConverter {
         if !includeIlliquid && isIlliquid(assetValue) { return 0 }
         return displayValue(for: assetValue, in: target)
     }
+
+    static func displayValue(for receivableValue: ReceivableValue, in target: Currency) -> Double {
+        guard let r = receivableValue.receivable, let snap = receivableValue.snapshot else { return 0 }
+        return convert(nativeValue: receivableValue.nativeValue,
+                       from: r.nativeCurrency,
+                       to: target,
+                       usdToInrRate: snap.usdToInrRate)
+    }
+
+    static func receivableDisplaySum(_ snapshot: Snapshot, in target: Currency) -> Double {
+        snapshot.receivableValues.reduce(0.0) { sum, rv in
+            sum + displayValue(for: rv, in: target)
+        }
+    }
 }

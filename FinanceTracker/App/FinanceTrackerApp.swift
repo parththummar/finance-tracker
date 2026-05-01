@@ -15,6 +15,7 @@ struct FinanceTrackerApp: App {
             let schema = Schema([
                 Person.self, Country.self, AssetType.self,
                 Account.self, Snapshot.self, AssetValue.self,
+                Receivable.self, ReceivableValue.self,
                 ExchangeRateHistory.self
             ])
             guard let storeURL = BackupService.storeURL() else {

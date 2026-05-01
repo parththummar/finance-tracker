@@ -192,11 +192,13 @@ enum BackupService {
         let values: Int
         let assetTypes: Int
         let countries: Int
+        let receivables: Int
+        let receivableValues: Int
         let error: String?
         var isOk: Bool { error == nil }
         var summary: String {
             if let error { return "Failed: \(error)" }
-            return "\(people)p · \(accounts)a · \(snapshots)snap · \(values)val · \(assetTypes)t · \(countries)c"
+            return "\(people)p · \(accounts)a · \(snapshots)snap · \(values)val · \(assetTypes)t · \(countries)c · \(receivables)r · \(receivableValues)rv"
         }
     }
 
@@ -205,7 +207,8 @@ enum BackupService {
         let fm = FileManager.default
         guard fm.fileExists(atPath: url.path) else {
             return VerifyResult(url: url, people: 0, accounts: 0, snapshots: 0, values: 0,
-                                assetTypes: 0, countries: 0, error: "File missing")
+                                assetTypes: 0, countries: 0, receivables: 0, receivableValues: 0,
+                                error: "File missing")
         }
         // Copy to temp so opening doesn't pollute backup with wal/shm.
         let tmpDir = URL(fileURLWithPath: NSTemporaryDirectory())
@@ -214,7 +217,8 @@ enum BackupService {
             try fm.createDirectory(at: tmpDir, withIntermediateDirectories: true)
         } catch {
             return VerifyResult(url: url, people: 0, accounts: 0, snapshots: 0, values: 0,
-                                assetTypes: 0, countries: 0, error: "Temp dir: \(error.localizedDescription)")
+                                assetTypes: 0, countries: 0, receivables: 0, receivableValues: 0,
+                                error: "Temp dir: \(error.localizedDescription)")
         }
         defer { try? fm.removeItem(at: tmpDir) }
 
@@ -229,13 +233,15 @@ enum BackupService {
             }
         } catch {
             return VerifyResult(url: url, people: 0, accounts: 0, snapshots: 0, values: 0,
-                                assetTypes: 0, countries: 0, error: "Copy: \(error.localizedDescription)")
+                                assetTypes: 0, countries: 0, receivables: 0, receivableValues: 0,
+                                error: "Copy: \(error.localizedDescription)")
         }
 
         do {
             let schema = Schema([
                 Person.self, Country.self, AssetType.self,
                 Account.self, Snapshot.self, AssetValue.self,
+                Receivable.self, ReceivableValue.self,
                 ExchangeRateHistory.self
             ])
             let config = ModelConfiguration(schema: schema, url: tmpStore)
@@ -247,11 +253,15 @@ enum BackupService {
             let v = (try? ctx.fetchCount(FetchDescriptor<AssetValue>())) ?? 0
             let t = (try? ctx.fetchCount(FetchDescriptor<AssetType>())) ?? 0
             let c = (try? ctx.fetchCount(FetchDescriptor<Country>())) ?? 0
+            let r = (try? ctx.fetchCount(FetchDescriptor<Receivable>())) ?? 0
+            let rv = (try? ctx.fetchCount(FetchDescriptor<ReceivableValue>())) ?? 0
             return VerifyResult(url: url, people: p, accounts: a, snapshots: s, values: v,
-                                assetTypes: t, countries: c, error: nil)
+                                assetTypes: t, countries: c, receivables: r, receivableValues: rv,
+                                error: nil)
         } catch {
             return VerifyResult(url: url, people: 0, accounts: 0, snapshots: 0, values: 0,
-                                assetTypes: 0, countries: 0, error: error.localizedDescription)
+                                assetTypes: 0, countries: 0, receivables: 0, receivableValues: 0,
+                                error: error.localizedDescription)
         }
     }
 

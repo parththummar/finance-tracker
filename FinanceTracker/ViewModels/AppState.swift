@@ -3,7 +3,7 @@ import AppKit
 import Combine
 
 enum Screen: Hashable {
-    case dashboard, breakdown, trends, snapshots, diff, reports, accounts, people, countries, assetTypes, settings
+    case dashboard, breakdown, trends, snapshots, diff, reports, accounts, people, countries, assetTypes, receivables, settings
 }
 
 final class AppState: ObservableObject {

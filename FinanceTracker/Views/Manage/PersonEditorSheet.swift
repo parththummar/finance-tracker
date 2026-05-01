@@ -9,6 +9,17 @@ struct PersonEditorSheet: View {
     @State private var name: String = ""
     @State private var color: Color = .blue
     @State private var errorMessage: String?
+    @State private var showUnsavedConfirm = false
+    @State private var initialName: String = ""
+    @State private var initialColorHex: String = ""
+
+    private var hasChanges: Bool {
+        name != initialName || (color.toHex() ?? "") != initialColorHex
+    }
+
+    private func attemptCancel() {
+        if hasChanges { showUnsavedConfirm = true } else { dismiss() }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -25,10 +36,17 @@ struct PersonEditorSheet: View {
 
             HStack {
                 Spacer()
-                Button("Cancel") { dismiss() }
+                Button("Cancel") { attemptCancel() }
+                    .keyboardShortcut(.cancelAction)
+                    .pointerStyle(.link)
                 Button { save() } label: { Label("Save", systemImage: "checkmark") }
                     .keyboardShortcut(.defaultAction)
+                    .pointerStyle(.link)
             }
+            Button("") { save() }
+                .keyboardShortcut("s", modifiers: .command)
+                .hidden()
+                .frame(width: 0, height: 0)
         }
         .padding(24)
         .frame(minWidth: 400)
@@ -40,6 +58,13 @@ struct PersonEditorSheet: View {
                 let taken = allPeople.filter { $0.id != existing?.id }.compactMap { $0.colorHex }
                 color = Palette.unusedFallback(taken: taken)
             }
+            initialName = name
+            initialColorHex = color.toHex() ?? ""
+        }
+        .confirmationDialog("Save changes before closing?", isPresented: $showUnsavedConfirm) {
+            Button("Save") { save() }
+            Button("Discard", role: .destructive) { dismiss() }
+            Button("Cancel", role: .cancel) {}
         }
     }
 

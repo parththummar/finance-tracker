@@ -15,6 +15,27 @@ struct CountryEditorSheet: View {
     @State private var color: Color = .blue
     @State private var errorMessage: String?
     @State private var showingFlagPicker: Bool = false
+    @State private var showUnsavedConfirm = false
+    @State private var initialSnapshot: FormSnapshot = FormSnapshot()
+
+    private struct FormSnapshot: Equatable {
+        var code: String = ""
+        var name: String = ""
+        var flag: String = ""
+        var defaultCurrency: Currency = .USD
+        var colorHex: String = ""
+    }
+
+    private var currentSnapshot: FormSnapshot {
+        FormSnapshot(code: code, name: name, flag: flag,
+                     defaultCurrency: defaultCurrency, colorHex: color.toHex() ?? "")
+    }
+
+    private var hasChanges: Bool { currentSnapshot != initialSnapshot }
+
+    private func attemptCancel() {
+        if hasChanges { showUnsavedConfirm = true } else { dismiss() }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -32,6 +53,7 @@ struct CountryEditorSheet: View {
                     } label: {
                         Label("Pick country…", systemImage: "flag.fill")
                     }
+                    .pointerStyle(.link)
                     .help("Searchable list of all country flags")
                 }
                 Picker("Default Currency", selection: $defaultCurrency) {
@@ -48,16 +70,31 @@ struct CountryEditorSheet: View {
 
             HStack {
                 Spacer()
-                Button("Cancel") { dismiss() }
+                Button("Cancel") { attemptCancel() }
+                    .keyboardShortcut(.cancelAction)
+                    .pointerStyle(.link)
                 Button { save() } label: { Label("Save", systemImage: "checkmark") }
                     .keyboardShortcut(.defaultAction)
+                    .pointerStyle(.link)
             }
+            Button("") { save() }
+                .keyboardShortcut("s", modifiers: .command)
+                .hidden()
+                .frame(width: 0, height: 0)
         }
         .padding(24)
         .frame(minWidth: 480)
-        .onAppear(perform: prefill)
+        .onAppear {
+            prefill()
+            initialSnapshot = currentSnapshot
+        }
         .sheet(isPresented: $showingFlagPicker) {
             FlagPickerSheet(flag: $flag, code: $code)
+        }
+        .confirmationDialog("Save changes before closing?", isPresented: $showUnsavedConfirm) {
+            Button("Save") { save() }
+            Button("Discard", role: .destructive) { dismiss() }
+            Button("Cancel", role: .cancel) {}
         }
     }
 

@@ -90,10 +90,13 @@ enum CSVImporter {
             uniqueKeysWithValues: ((try? context.fetch(FetchDescriptor<AssetType>())) ?? [])
                 .map { ($0.name, $0) }
         )
-        var accountsByName = Dictionary(
-            uniqueKeysWithValues: ((try? context.fetch(FetchDescriptor<Account>())) ?? [])
-                .map { ($0.name, $0) }
-        )
+        func acctKey(name: String, personID: UUID?, countryID: UUID?) -> String {
+            "\(name.lowercased())|\(personID?.uuidString ?? "_")|\(countryID?.uuidString ?? "_")"
+        }
+        var accountsByKey: [String: Account] = [:]
+        for a in (try? context.fetch(FetchDescriptor<Account>())) ?? [] {
+            accountsByKey[acctKey(name: a.name, personID: a.person?.id, countryID: a.country?.id)] = a
+        }
         var snapshotsByDate = Dictionary(
             uniqueKeysWithValues: ((try? context.fetch(FetchDescriptor<Snapshot>())) ?? [])
                 .map { (Calendar.current.startOfDay(for: $0.date), $0) }
@@ -193,7 +196,8 @@ enum CSVImporter {
 
             // Account — require person, country, type to create (matches Account.init)
             let account: Account? = {
-                if let a = accountsByName[accountName] { return a }
+                let key = acctKey(name: accountName, personID: person?.id, countryID: country?.id)
+                if let a = accountsByKey[key] { return a }
                 guard let person, let country, let type else { return nil }
                 let a = Account(
                     name: accountName,
@@ -206,7 +210,7 @@ enum CSVImporter {
                     isActive: true
                 )
                 context.insert(a)
-                accountsByName[accountName] = a
+                accountsByKey[key] = a
                 report.accountsCreated += 1
                 return a
             }()

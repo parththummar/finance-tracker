@@ -30,6 +30,7 @@ struct UndoToast: View {
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .pointerStyle(.link)
                 }
                 .padding(.horizontal, 14).padding(.vertical, 10)
                 .background(Color.lLossSoft.opacity(0.4))
@@ -69,6 +70,7 @@ struct UndoToast: View {
                             .contentShape(Capsule())
                     }
                     .buttonStyle(.plain)
+                    .pointerStyle(.link)
                     Button {
                         stash.clear()
                     } label: {
@@ -79,6 +81,7 @@ struct UndoToast: View {
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .pointerStyle(.link)
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)

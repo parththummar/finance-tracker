@@ -153,6 +153,7 @@ struct TrendsView: View {
                                 filters.removeAll { $0.id == f.id }
                             } label: { Image(systemName: "xmark").font(.system(size: 8, weight: .bold)) }
                             .buttonStyle(.plain)
+                            .pointerStyle(.link)
                         }
                         .padding(.horizontal, 8).padding(.vertical, 4)
                         .foregroundStyle(Color.lInk2)

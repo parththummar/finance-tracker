@@ -460,13 +460,9 @@ struct SettingsView: View {
                     Text(b.kind == .auto ? "AUTO" : b.kind == .manual ? "MANUAL" : "")
                         .font(Typo.eyebrow).tracking(1.0)
                         .foregroundStyle(Color.lInk3)
-                    if let res = verifyResults[b.url] {
-                        Text("·").foregroundStyle(Color.lInk4)
-                        Text(res.summary)
-                            .font(Typo.mono(10))
-                            .foregroundStyle(res.isOk ? Color.lGain : Color.lLoss)
-                            .lineLimit(1)
-                    }
+                }
+                if let res = verifyResults[b.url] {
+                    verifySummary(res)
                 }
             }
             Spacer(minLength: 8)
@@ -481,6 +477,36 @@ struct SettingsView: View {
             GhostButton(action: { pendingRestore = b.url }) { Text("Restore") }
         }
         .padding(.vertical, 6)
+    }
+
+    @ViewBuilder
+    private func verifySummary(_ res: BackupService.VerifyResult) -> some View {
+        if let err = res.error {
+            HStack(alignment: .top, spacing: 6) {
+                Image(systemName: "xmark.octagon.fill").font(.system(size: 9))
+                Text("Verify failed: \(err)")
+                    .font(Typo.mono(10))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .foregroundStyle(Color.lLoss)
+            .padding(.top, 2)
+        } else {
+            HStack(alignment: .top, spacing: 6) {
+                Image(systemName: "checkmark.seal.fill").font(.system(size: 9))
+                    .foregroundStyle(Color.lGain)
+                    .padding(.top, 2)
+                Text(verifyText(res))
+                    .font(Typo.mono(10))
+                    .foregroundStyle(Color.lInk2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(.top, 3)
+        }
+    }
+
+    private func verifyText(_ r: BackupService.VerifyResult) -> String {
+        "People \(r.people) · Accounts \(r.accounts) · Snapshots \(r.snapshots) · Asset values \(r.values) · Asset types \(r.assetTypes) · Countries \(r.countries) · Receivables \(r.receivables) · Receivable values \(r.receivableValues)"
     }
 
     @MainActor
@@ -567,6 +593,17 @@ struct SettingsView: View {
                         pendingExport = PendingExport(
                             document: CSVDocument(text: text),
                             defaultFilename: "finance_totals_\(datestamp()).csv"
+                        )
+                    }
+                    exportRow(
+                        icon: "hourglass",
+                        title: "Receivables history",
+                        subtitle: "Pending money owed · all snapshots"
+                    ) {
+                        let text = CSVExporter.receivables(snapshots: snapshots)
+                        pendingExport = PendingExport(
+                            document: CSVDocument(text: text),
+                            defaultFilename: "finance_receivables_\(datestamp()).csv"
                         )
                     }
                     Divider().overlay(Color.lLine)

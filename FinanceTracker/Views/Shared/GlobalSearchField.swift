@@ -84,6 +84,7 @@ struct GlobalSearchField: View {
                         .foregroundStyle(Color.lInk3)
                 }
                 .buttonStyle(.plain)
+                .pointerStyle(.link)
             } else {
                 Text("⌘F")
                     .font(Typo.mono(9, weight: .medium))
@@ -164,6 +165,7 @@ struct GlobalSearchField: View {
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
+                        .pointerStyle(.link)
                         if idx < r.count - 1 {
                             Divider().overlay(Color.lLine)
                         }

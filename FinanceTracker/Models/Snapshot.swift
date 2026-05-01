@@ -15,6 +15,9 @@ final class Snapshot {
     @Relationship(deleteRule: .cascade, inverse: \AssetValue.snapshot)
     var values: [AssetValue] = []
 
+    @Relationship(deleteRule: .cascade, inverse: \ReceivableValue.snapshot)
+    var receivableValues: [ReceivableValue] = []
+
     init(date: Date, label: String, usdToInrRate: Double, notes: String = "") {
         self.id = UUID()
         self.date = date

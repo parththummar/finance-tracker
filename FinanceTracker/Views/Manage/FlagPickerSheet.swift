@@ -81,6 +81,7 @@ struct FlagPickerSheet: View {
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
+                        .pointerStyle(.link)
                         .background(Color.lSunken.opacity(0.4))
                         .clipShape(RoundedRectangle(cornerRadius: 6))
                     }
@@ -90,6 +91,12 @@ struct FlagPickerSheet: View {
         }
         .frame(minWidth: 720, minHeight: 480)
         .background(Color.lBg)
+        .overlay(alignment: .topLeading) {
+            Button("") { dismiss() }
+                .keyboardShortcut(.cancelAction)
+                .hidden()
+                .frame(width: 0, height: 0)
+        }
     }
 
     private static func flagFromCode(_ raw: String) -> String {

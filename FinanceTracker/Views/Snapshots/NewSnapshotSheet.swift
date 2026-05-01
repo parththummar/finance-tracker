@@ -6,6 +6,7 @@ struct NewSnapshotSheet: View {
     @Environment(\.modelContext) private var context
     @Query(sort: \Snapshot.date, order: .reverse) private var snapshots: [Snapshot]
     @Query private var accounts: [Account]
+    @Query(sort: \Receivable.name) private var receivables: [Receivable]
 
     @State private var date: Date = Calendar.current.startOfDay(for: Date())
     @State private var rate: Double = 83.0
@@ -14,9 +15,28 @@ struct NewSnapshotSheet: View {
     @State private var errorMessage: String?
     @State private var isFetchingRate: Bool = false
     @State private var rateFetchedAt: Date?
+    @State private var showUnsavedConfirm = false
+    @State private var initialSnapshot: FormSnapshot = FormSnapshot()
     var onCreated: (Snapshot) -> Void = { _ in }
 
     private let minGapDays = 7
+
+    private struct FormSnapshot: Equatable {
+        var date: Date = Date()
+        var rate: Double = 0
+        var copyPrevious: Bool = true
+        var notes: String = ""
+    }
+
+    private var currentSnapshot: FormSnapshot {
+        FormSnapshot(date: date, rate: rate, copyPrevious: copyPrevious, notes: notes)
+    }
+
+    private var hasChanges: Bool { currentSnapshot != initialSnapshot }
+
+    private func attemptCancel() {
+        if hasChanges { showUnsavedConfirm = true } else { dismiss() }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -44,7 +64,7 @@ struct NewSnapshotSheet: View {
 
             HStack {
                 Spacer()
-                GhostButton(action: { dismiss() }) { Text("Cancel") }
+                GhostButton(action: { attemptCancel() }) { Text("Cancel") }
                 PrimaryButton(action: create) {
                     HStack(spacing: 5) {
                         Image(systemName: "plus").font(.system(size: 10, weight: .bold))
@@ -55,11 +75,25 @@ struct NewSnapshotSheet: View {
             }
             .padding(.horizontal, 24)
             .padding(.vertical, 16)
+            Button("") { create() }
+                .keyboardShortcut("s", modifiers: .command)
+                .hidden()
+                .frame(width: 0, height: 0)
+            Button("") { attemptCancel() }
+                .keyboardShortcut(.cancelAction)
+                .hidden()
+                .frame(width: 0, height: 0)
         }
         .background(Color.lBg)
         .frame(minWidth: 580)
         .onAppear {
             if let prev = snapshots.first { rate = prev.usdToInrRate }
+            initialSnapshot = currentSnapshot
+        }
+        .confirmationDialog("Save changes before closing?", isPresented: $showUnsavedConfirm) {
+            Button("Save") { create() }
+            Button("Discard", role: .destructive) { dismiss() }
+            Button("Cancel", role: .cancel) {}
         }
     }
 
@@ -106,6 +140,7 @@ struct NewSnapshotSheet: View {
                     }
                     .disabled(isFetchingRate)
                     .buttonStyle(.plain)
+                    .pointerStyle(.link)
                     .help("Fetch live rate for chosen date")
                     .foregroundStyle(Color.lInk2)
                 }
@@ -225,6 +260,19 @@ struct NewSnapshotSheet: View {
             }
             let av = AssetValue(snapshot: snap, account: acc, nativeValue: prefill)
             context.insert(av)
+        }
+
+        let activeReceivables = receivables.filter { $0.isActive && $0.startDate <= chosen }
+        for r in activeReceivables {
+            let prefill: Double
+            if copyPrevious, let prev = previous,
+               let prevValue = prev.receivableValues.first(where: { $0.receivable?.id == r.id }) {
+                prefill = prevValue.nativeValue
+            } else {
+                prefill = 0
+            }
+            let rv = ReceivableValue(snapshot: snap, receivable: r, nativeValue: prefill)
+            context.insert(rv)
         }
 
         do {

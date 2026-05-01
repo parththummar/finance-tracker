@@ -116,6 +116,42 @@ enum CSVExporter {
         return encode(rows: rows)
     }
 
+    static func receivables(snapshots: [Snapshot]) -> String {
+        let header = [
+            "snapshot_date", "snapshot_label", "usd_to_inr_rate",
+            "receivable_name", "debtor", "native_currency", "native_value",
+            "value_usd", "value_inr", "note"
+        ]
+        var rows: [[String]] = [header]
+        let dateFmt = DateFormatter()
+        dateFmt.dateFormat = "yyyy-MM-dd"
+
+        for s in snapshots.sorted(by: { $0.date < $1.date }) {
+            for rv in s.receivableValues.sorted(by: { ($0.receivable?.name ?? "") < ($1.receivable?.name ?? "") }) {
+                guard let r = rv.receivable else { continue }
+                let usd = CurrencyConverter.convert(nativeValue: rv.nativeValue,
+                                                    from: r.nativeCurrency, to: .USD,
+                                                    usdToInrRate: s.usdToInrRate)
+                let inr = CurrencyConverter.convert(nativeValue: rv.nativeValue,
+                                                    from: r.nativeCurrency, to: .INR,
+                                                    usdToInrRate: s.usdToInrRate)
+                rows.append([
+                    dateFmt.string(from: s.date),
+                    s.label,
+                    String(format: "%.4f", s.usdToInrRate),
+                    r.name,
+                    r.debtor,
+                    r.nativeCurrency.rawValue,
+                    String(format: "%.2f", rv.nativeValue),
+                    String(format: "%.2f", usd),
+                    String(format: "%.2f", inr),
+                    rv.note
+                ])
+            }
+        }
+        return encode(rows: rows)
+    }
+
     // MARK: encode
 
     nonisolated private static func encode(rows: [[String]]) -> String {

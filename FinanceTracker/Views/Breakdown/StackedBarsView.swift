@@ -81,6 +81,7 @@ struct StackedBarsView: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .pointerStyle(.link)
                 .help("Click to filter by \(g.label)")
 
                 Spacer(minLength: 8)
@@ -159,6 +160,7 @@ struct StackedBarsView: View {
             )
             .contentShape(Rectangle())
             .onTapGesture { onTap(seg) }
+            .pointerStyle(.link)
             .onHover { inside in
                 if inside {
                     hoverSegmentID = seg.id

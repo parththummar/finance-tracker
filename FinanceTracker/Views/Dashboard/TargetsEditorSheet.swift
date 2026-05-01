@@ -5,6 +5,14 @@ struct TargetsEditorSheet: View {
     var onSave: () -> Void
 
     @State private var drafts: [AssetCategory: String] = [:]
+    @State private var initialDrafts: [AssetCategory: String] = [:]
+    @State private var showUnsavedConfirm = false
+
+    private var hasChanges: Bool { drafts != initialDrafts }
+
+    private func attemptCancel() {
+        if hasChanges { showUnsavedConfirm = true } else { dismiss() }
+    }
 
     private var parsed: [AssetCategory: Double] {
         var out: [AssetCategory: Double] = [:]
@@ -81,21 +89,37 @@ struct TargetsEditorSheet: View {
                     for c in AssetCategory.allCases { drafts[c] = "" }
                 }
                 .buttonStyle(.plain)
+                .pointerStyle(.link)
                 .foregroundStyle(Color.lInk3)
                 .font(Typo.sans(12))
                 Spacer()
-                Button("Cancel") { dismiss() }
+                Button("Cancel") { attemptCancel() }
+                    .keyboardShortcut(.cancelAction)
+                    .pointerStyle(.link)
                 Button {
                     save()
                 } label: {
                     Label("Save", systemImage: "checkmark")
                 }
                 .keyboardShortcut(.defaultAction)
+                .pointerStyle(.link)
             }
+            Button("") { save() }
+                .keyboardShortcut("s", modifiers: .command)
+                .hidden()
+                .frame(width: 0, height: 0)
         }
         .padding(24)
         .frame(minWidth: 460)
-        .onAppear { load() }
+        .onAppear {
+            load()
+            initialDrafts = drafts
+        }
+        .confirmationDialog("Save changes before closing?", isPresented: $showUnsavedConfirm) {
+            Button("Save") { save() }
+            Button("Discard", role: .destructive) { dismiss() }
+            Button("Cancel", role: .cancel) {}
+        }
     }
 
     private var sumColor: Color {

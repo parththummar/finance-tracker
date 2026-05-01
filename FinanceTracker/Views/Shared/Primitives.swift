@@ -538,6 +538,7 @@ struct PrimaryButton<Label: View>: View {
                 .contentShape(Capsule())
         }
         .buttonStyle(.plain)
+        .pointerStyle(.link)
     }
 }
 
@@ -634,6 +635,7 @@ struct ColorSwatchButton: View {
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)
+        .pointerStyle(.link)
         .popover(isPresented: $open, arrowEdge: .bottom) {
             VStack(alignment: .leading, spacing: 12) {
                 Text("PICK COLOR")
@@ -656,6 +658,7 @@ struct ColorSwatchButton: View {
                                 .contentShape(Circle())
                         }
                         .buttonStyle(.plain)
+                        .pointerStyle(.link)
                     }
                 }
                 Divider().overlay(Color.lLine)

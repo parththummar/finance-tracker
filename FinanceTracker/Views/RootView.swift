@@ -61,6 +61,7 @@ struct RootView: View {
         case .people:     paged { PeopleView() }
         case .countries:  paged { CountriesView() }
         case .assetTypes: paged { AssetTypesView() }
+        case .receivables: paged { ReceivablesView() }
         }
     }
 

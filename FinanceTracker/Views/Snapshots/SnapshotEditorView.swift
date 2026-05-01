@@ -7,6 +7,7 @@ struct SnapshotEditorView: View {
     @EnvironmentObject var app: AppState
     @EnvironmentObject var undo: UndoStash
     @Query(sort: \Snapshot.date, order: .reverse) private var allSnapshots: [Snapshot]
+    @Query(sort: \Receivable.name) private var allReceivables: [Receivable]
     let snapshot: Snapshot
     @State private var confirmingLock = false
     @State private var confirmingDelete = false
@@ -34,27 +35,17 @@ struct SnapshotEditorView: View {
     }
 
     private var liveTotalDisplay: Double {
-        snapshot.values.reduce(0.0) { sum, v in
-            guard let acc = v.account else { return sum }
-            return sum + CurrencyConverter.convert(
-                nativeValue: v.nativeValue,
-                from: acc.nativeCurrency,
-                to: app.displayCurrency,
-                usdToInrRate: snapshot.usdToInrRate
-            )
+        let inc = app.includeIlliquidInNetWorth
+        return snapshot.values.reduce(0.0) { sum, v in
+            sum + CurrencyConverter.netDisplayValue(for: v, in: app.displayCurrency, includeIlliquid: inc)
         }
     }
 
     private var previousTotalDisplay: Double? {
         guard let prev = previousSnapshot else { return nil }
+        let inc = app.includeIlliquidInNetWorth
         return prev.values.reduce(0.0) { sum, v in
-            guard let acc = v.account else { return sum }
-            return sum + CurrencyConverter.convert(
-                nativeValue: v.nativeValue,
-                from: acc.nativeCurrency,
-                to: app.displayCurrency,
-                usdToInrRate: prev.usdToInrRate
-            )
+            sum + CurrencyConverter.netDisplayValue(for: v, in: app.displayCurrency, includeIlliquid: inc)
         }
     }
 
@@ -65,6 +56,9 @@ struct SnapshotEditorView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     valuesPanel
+                    if !applicableReceivables.isEmpty {
+                        receivablesPanel
+                    }
                     notesPanel
 
                     if let err = saveError {
@@ -79,6 +73,20 @@ struct SnapshotEditorView: View {
         }
         .background(Color.lBg)
         .frame(minWidth: 980, minHeight: 680)
+        .overlay(alignment: .topLeading) {
+            VStack(spacing: 0) {
+                Button("") {
+                    if !snapshot.isLocked { saveDraft(dismissAfter: false) }
+                }
+                .keyboardShortcut("s", modifiers: .command)
+                .hidden()
+                .frame(width: 0, height: 0)
+                Button("") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                    .hidden()
+                    .frame(width: 0, height: 0)
+            }
+        }
         .confirmationDialog(
             "Net worth dropped sharply — confirm save?",
             isPresented: Binding(
@@ -99,7 +107,10 @@ struct SnapshotEditorView: View {
         } message: { warn in
             Text("Total \(Fmt.compact(warn.prevTotal, app.displayCurrency)) → \(Fmt.compact(warn.newTotal, app.displayCurrency)) (−\(String(format: "%.1f%%", warn.dropPct * 100))). Likely a missed entry. Cancel to review, or save anyway if intentional.")
         }
-        .onAppear { context.autosaveEnabled = false }
+        .onAppear {
+            context.autosaveEnabled = false
+            backfillReceivableValues()
+        }
         .onDisappear {
             try? context.save()
             context.autosaveEnabled = true
@@ -223,6 +234,7 @@ struct SnapshotEditorView: View {
                     }
                     .disabled(isFetchingRate)
                     .buttonStyle(.plain)
+                    .pointerStyle(.link)
                     .help("Fetch USD→INR for \(Fmt.date(snapshot.date)) from frankfurter.app")
                 }
                 if snapshot.usdToInrRate <= 0 {
@@ -237,17 +249,7 @@ struct SnapshotEditorView: View {
     // MARK: - Values panel
 
     private var sortedValues: [AssetValue] {
-        func ccyRank(_ c: Currency?) -> Int {
-            switch c { case .USD: return 0; case .INR: return 1; case nil: return 99 }
-        }
-        return snapshot.values.sorted { lhs, rhs in
-            let lc = ccyRank(lhs.account?.nativeCurrency)
-            let rc = ccyRank(rhs.account?.nativeCurrency)
-            if lc != rc { return lc < rc }
-            let lp = lhs.account?.person?.name ?? ""
-            let rp = rhs.account?.person?.name ?? ""
-            let pcmp = lp.localizedCaseInsensitiveCompare(rp)
-            if pcmp != .orderedSame { return pcmp == .orderedAscending }
+        snapshot.values.sorted { lhs, rhs in
             let la = lhs.account?.name ?? ""
             let ra = rhs.account?.name ?? ""
             let acmp = la.localizedCaseInsensitiveCompare(ra)
@@ -407,6 +409,144 @@ struct SnapshotEditorView: View {
         }
         .padding(.horizontal, 18).padding(.vertical, 12)
         .background(Color.lSunken)
+    }
+
+    // MARK: - Receivables panel
+
+    private var applicableReceivables: [Receivable] {
+        allReceivables.filter { r in
+            r.isActive && r.startDate <= snapshot.date
+        }
+    }
+
+    private func backfillReceivableValues() {
+        guard !snapshot.isLocked else { return }
+        let existingIDs = Set(snapshot.receivableValues.compactMap { $0.receivable?.id })
+        var inserted = false
+        for r in applicableReceivables where !existingIDs.contains(r.id) {
+            let rv = ReceivableValue(snapshot: snapshot, receivable: r, nativeValue: 0)
+            context.insert(rv)
+            inserted = true
+        }
+        if inserted { try? context.save() }
+    }
+
+    private var sortedReceivableValues: [ReceivableValue] {
+        snapshot.receivableValues.sorted { lhs, rhs in
+            let ln = lhs.receivable?.name ?? ""
+            let rn = rhs.receivable?.name ?? ""
+            let cmp = ln.localizedCaseInsensitiveCompare(rn)
+            if cmp != .orderedSame { return cmp == .orderedAscending }
+            return lhs.id.uuidString < rhs.id.uuidString
+        }
+    }
+
+    private func previousReceivableValue(for receivable: Receivable?) -> Double? {
+        guard let receivable, let prev = previousSnapshot else { return nil }
+        return prev.receivableValues.first { $0.receivable?.id == receivable.id }?.nativeValue
+    }
+
+    private var receivablesPanel: some View {
+        Panel {
+            VStack(spacing: 0) {
+                PanelHead(title: "Pending receivables · outside net worth",
+                          meta: "\(sortedReceivableValues.count) rows")
+                receivableHeader
+                let rows = sortedReceivableValues
+                ForEach(Array(rows.enumerated()), id: \.element.id) { idx, rv in
+                    receivableRow(rv, idx: idx)
+                    if idx < rows.count - 1 {
+                        Divider().overlay(Color.lLine)
+                    }
+                }
+            }
+        }
+        .transaction { $0.animation = nil }
+    }
+
+    private var receivableHeader: some View {
+        HStack {
+            Text("Receivable").frame(maxWidth: .infinity, alignment: .leading)
+            Text("Debtor").frame(width: 140, alignment: .leading)
+            Text("Prev").frame(width: 130, alignment: .trailing)
+            Text("Δ").frame(width: 130, alignment: .trailing)
+            Text("Native value").frame(width: 210, alignment: .trailing)
+        }
+        .font(Typo.eyebrow).tracking(1.2).foregroundStyle(Color.lInk3)
+        .padding(.horizontal, 18).padding(.vertical, 10)
+        .background(Color.lSunken)
+        .overlay(Rectangle().frame(height: 1).foregroundStyle(Color.lLine), alignment: .bottom)
+    }
+
+    @ViewBuilder
+    private func receivableRow(_ rv: ReceivableValue, idx: Int) -> some View {
+        let ccy = rv.receivable?.nativeCurrency ?? .USD
+        let prev = previousReceivableValue(for: rv.receivable)
+        let diff = prev.map { rv.nativeValue - $0 }
+        HStack {
+            Text(rv.receivable?.name ?? "—")
+                .font(Typo.sans(13, weight: .medium))
+                .foregroundStyle(Color.lInk)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Text(rv.receivable?.debtor.isEmpty == false ? rv.receivable!.debtor : "—")
+                .font(Typo.sans(12))
+                .foregroundStyle(Color.lInk2)
+                .frame(width: 140, alignment: .leading)
+
+            Group {
+                if let prev {
+                    Text(Fmt.currency(prev, ccy))
+                        .foregroundStyle(Color.lInk3)
+                } else {
+                    Text("—").foregroundStyle(Color.lInk3)
+                }
+            }
+            .font(Typo.mono(12))
+            .frame(width: 130, alignment: .trailing)
+
+            Group {
+                if let diff {
+                    Text(Fmt.signedDelta(diff, ccy))
+                        .foregroundStyle(diff == 0 ? Color.lInk3 : (diff > 0 ? Color.lGain : Color.lLoss))
+                } else {
+                    Text("—").foregroundStyle(Color.lInk3)
+                }
+            }
+            .font(Typo.mono(12, weight: .medium))
+            .frame(width: 130, alignment: .trailing)
+
+            if snapshot.isLocked {
+                HStack(spacing: 6) {
+                    Text(Fmt.currency(rv.nativeValue, ccy))
+                        .font(Typo.mono(13, weight: .semibold))
+                        .foregroundStyle(Color.lInk)
+                    Text(ccy.rawValue)
+                        .font(Typo.mono(10, weight: .medium))
+                        .foregroundStyle(Color.lInk3)
+                        .frame(width: 30, alignment: .leading)
+                }
+                .frame(width: 210, alignment: .trailing)
+            } else {
+                HStack(spacing: 6) {
+                    TextField("", value: Binding(
+                        get: { rv.nativeValue },
+                        set: { rv.nativeValue = $0 }
+                    ), format: .number)
+                    .textFieldStyle(.roundedBorder)
+                    .multilineTextAlignment(.trailing)
+                    .font(Typo.mono(13))
+                    .frame(width: 170)
+                    Text(ccy.rawValue)
+                        .font(Typo.mono(10, weight: .medium))
+                        .foregroundStyle(Color.lInk3)
+                        .frame(width: 30, alignment: .leading)
+                }
+                .frame(width: 210, alignment: .trailing)
+            }
+        }
+        .padding(.horizontal, 18).padding(.vertical, 10)
+        .background(idx.isMultiple(of: 2) ? Color.clear : Color.lSunken.opacity(0.5))
     }
 
     // MARK: - Footer / misc

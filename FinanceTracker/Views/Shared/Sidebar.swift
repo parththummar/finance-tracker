@@ -27,6 +27,7 @@ struct Sidebar: View {
         ]),
         NavGroup(section: "Data", items: [
             NavItem(screen: .accounts, label: "All Assets", icon: "list.bullet"),
+            NavItem(screen: .receivables, label: "Receivables", icon: "hourglass"),
         ]),
     ]
 
