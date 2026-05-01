@@ -15,14 +15,17 @@ struct RootView: View {
             Sidebar()
             VStack(spacing: 0) {
                 TopBar()
+                    .zIndex(10)
                 content
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(Color.lBg)
+                    .zIndex(0)
             }
             .frame(minWidth: 780)
         }
         .frame(minWidth: 1000, minHeight: 640)
         .background(Color.lBg)
+        .environment(\.compactMode, app.compactMode)
         .overlay(alignment: .bottom) { UndoToast() }
         .focusedSceneValue(\.appState, app)
         .focusedSceneValue(\.undoStash, undo)
@@ -52,6 +55,7 @@ struct RootView: View {
         case .trends:     scrollable { TrendsView() }
         case .snapshots:  scrollable { SnapshotListView() }
         case .diff:       scrollable { SnapshotDiffView() }
+        case .reports:    scrollable { ReportsView() }
         case .settings:   scrollable { SettingsView() }
         case .accounts:   paged { AccountsView() }
         case .people:     paged { PeopleView() }
@@ -62,11 +66,14 @@ struct RootView: View {
 
     @ViewBuilder
     private func scrollable<V: View>(@ViewBuilder _ v: () -> V) -> some View {
+        let h: CGFloat = app.compactMode ? 20 : 32
+        let top: CGFloat = app.compactMode ? 14 : 24
+        let bot: CGFloat = app.compactMode ? 24 : 40
         ScrollView(.vertical) {
             v()
-                .padding(.horizontal, 32)
-                .padding(.top, 24)
-                .padding(.bottom, 40)
+                .padding(.horizontal, h)
+                .padding(.top, top)
+                .padding(.bottom, bot)
                 .frame(maxWidth: 1400, alignment: .topLeading)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
         }
@@ -74,10 +81,13 @@ struct RootView: View {
 
     @ViewBuilder
     private func paged<V: View>(@ViewBuilder _ v: () -> V) -> some View {
+        let h: CGFloat = app.compactMode ? 20 : 32
+        let top: CGFloat = app.compactMode ? 14 : 24
+        let bot: CGFloat = app.compactMode ? 12 : 20
         v()
-            .padding(.horizontal, 32)
-            .padding(.top, 24)
-            .padding(.bottom, 20)
+            .padding(.horizontal, h)
+            .padding(.top, top)
+            .padding(.bottom, bot)
             .frame(maxWidth: 1400, alignment: .topLeading)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }

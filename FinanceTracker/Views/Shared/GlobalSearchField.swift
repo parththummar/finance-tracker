@@ -27,9 +27,18 @@ struct GlobalSearchField: View {
         let q = query.trimmingCharacters(in: .whitespaces).lowercased()
         guard !q.isEmpty else { return [] }
         var out: [Result] = []
-        for a in accounts where a.name.lowercased().contains(q) {
-            let detail = [a.person?.name, a.assetType?.name, a.country?.name]
-                .compactMap { $0 }.joined(separator: " · ")
+        for a in accounts {
+            let nameHit = a.name.lowercased().contains(q)
+            let instHit = a.institution.lowercased().contains(q)
+            let notesHit = a.notes.lowercased().contains(q)
+            guard nameHit || instHit || notesHit else { continue }
+            var details = [a.person?.name, a.assetType?.name, a.country?.name].compactMap { $0 }
+            if instHit && !a.institution.isEmpty { details.append("📍 \(a.institution)") }
+            if notesHit && !a.notes.isEmpty {
+                let snippet = a.notes.count > 50 ? String(a.notes.prefix(50)) + "…" : a.notes
+                details.append("📝 \(snippet)")
+            }
+            let detail = details.joined(separator: " · ")
             let col = a.assetType.map { Palette.color(for: $0.category) } ?? .lInk3
             out.append(Result(kind: .account, label: a.name, detail: detail,
                               screen: .accounts, color: col))
@@ -59,7 +68,7 @@ struct GlobalSearchField: View {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(Color.lInk3)
-            TextField("Search accounts, people, countries, types", text: $query)
+            TextField("Search accounts, institution, notes, people, countries, types", text: $query)
                 .textFieldStyle(.plain)
                 .font(Typo.sans(12))
                 .foregroundStyle(Color.lInk)
@@ -91,9 +100,17 @@ struct GlobalSearchField: View {
         .onChange(of: app.globalSearchFocusTick) { _, _ in focused = true }
         .onChange(of: focused) { _, newVal in showResults = newVal && !query.isEmpty }
         .onChange(of: query) { _, newVal in showResults = focused && !newVal.isEmpty }
-        .popover(isPresented: $showResults, arrowEdge: .top) {
-            resultsList
-                .frame(width: 360)
+        .overlay(alignment: .topLeading) {
+            if showResults {
+                resultsList
+                    .frame(width: 520)
+                    .background(Color.lPanel)
+                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.lLine, lineWidth: 1))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .shadow(color: .black.opacity(0.22), radius: 16, y: 6)
+                    .offset(y: 36)
+                    .zIndex(999)
+            }
         }
     }
 
@@ -103,44 +120,55 @@ struct GlobalSearchField: View {
         VStack(alignment: .leading, spacing: 0) {
             if r.isEmpty {
                 Text("No matches.")
-                    .font(Typo.serifItalic(12))
+                    .font(Typo.serifItalic(13))
                     .foregroundStyle(Color.lInk3)
-                    .padding(14)
+                    .padding(16)
             } else {
-                ScrollView {
-                    VStack(spacing: 0) {
-                        ForEach(Array(r.enumerated()), id: \.element.id) { idx, res in
-                            Button { open(res) } label: {
-                                HStack(spacing: 10) {
-                                    RoundedRectangle(cornerRadius: 2)
-                                        .fill(res.color)
-                                        .frame(width: 8, height: 8)
-                                    VStack(alignment: .leading, spacing: 1) {
-                                        Text(res.label)
-                                            .font(Typo.sans(12.5, weight: .medium))
-                                            .foregroundStyle(Color.lInk)
-                                            .lineLimit(1)
-                                        Text(res.detail)
-                                            .font(Typo.sans(10.5))
-                                            .foregroundStyle(Color.lInk3)
-                                            .lineLimit(1)
-                                    }
-                                    Spacer(minLength: 0)
-                                    Text(kindBadge(res.kind))
-                                        .font(Typo.eyebrow).tracking(1.0)
+                HStack {
+                    Text("\(r.count) result\(r.count == 1 ? "" : "s")")
+                        .font(Typo.eyebrow).tracking(1.2)
+                        .foregroundStyle(Color.lInk3)
+                    Spacer()
+                    Text("↩ open · esc close")
+                        .font(Typo.mono(10))
+                        .foregroundStyle(Color.lInk4)
+                }
+                .padding(.horizontal, 14).padding(.vertical, 8)
+                .background(Color.lSunken.opacity(0.5))
+                Divider().overlay(Color.lLine)
+                VStack(spacing: 0) {
+                    ForEach(Array(r.enumerated()), id: \.element.id) { idx, res in
+                        Button { open(res) } label: {
+                            HStack(spacing: 12) {
+                                RoundedRectangle(cornerRadius: 3)
+                                    .fill(res.color)
+                                    .frame(width: 10, height: 10)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(res.label)
+                                        .font(Typo.sans(14, weight: .semibold))
+                                        .foregroundStyle(Color.lInk)
+                                        .lineLimit(1)
+                                    Text(res.detail)
+                                        .font(Typo.sans(12))
                                         .foregroundStyle(Color.lInk3)
+                                        .lineLimit(1)
                                 }
-                                .padding(.horizontal, 14).padding(.vertical, 8)
-                                .contentShape(Rectangle())
+                                Spacer(minLength: 0)
+                                Text(kindBadge(res.kind))
+                                    .font(Typo.eyebrow).tracking(1.2)
+                                    .foregroundStyle(Color.lInk3)
+                                    .padding(.horizontal, 6).padding(.vertical, 2)
+                                    .overlay(Capsule().stroke(Color.lLine, lineWidth: 1))
                             }
-                            .buttonStyle(.plain)
-                            if idx < r.count - 1 {
-                                Divider().overlay(Color.lLine)
-                            }
+                            .padding(.horizontal, 14).padding(.vertical, 11)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        if idx < r.count - 1 {
+                            Divider().overlay(Color.lLine)
                         }
                     }
                 }
-                .frame(maxHeight: 320)
             }
         }
         .background(Color.lPanel)

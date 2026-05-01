@@ -13,6 +13,7 @@ final class Account {
     var notes: String
     var isActive: Bool
     var createdAt: Date
+    var groupName: String = ""
 
     @Relationship(deleteRule: .cascade, inverse: \AssetValue.account)
     var values: [AssetValue] = []

@@ -81,6 +81,7 @@ struct SnapshotDiffView: View {
         .onChange(of: sortMode) { _, _ in recompute() }
         .onChange(of: showZeros) { _, _ in recompute() }
         .onChange(of: snapshots.count) { _, _ in initPickers(); recompute() }
+        .onChange(of: app.includeIlliquidInNetWorth) { _, _ in recompute() }
     }
 
     private func initPickers() {
@@ -310,9 +311,10 @@ struct SnapshotDiffView: View {
             return
         }
         let target = app.displayCurrency
+        let inc = app.includeIlliquidInNetWorth
 
         func value(_ v: AssetValue) -> Double {
-            CurrencyConverter.netDisplayValue(for: v, in: target)
+            CurrencyConverter.netDisplayValue(for: v, in: target, includeIlliquid: inc)
         }
 
         struct Bucket { var sum: Double = 0; var acc: Account? }
@@ -320,10 +322,12 @@ struct SnapshotDiffView: View {
         var mapB: [UUID: Bucket] = [:]
         for v in a.values {
             guard let acc = v.account else { continue }
+            if !inc && (acc.assetType?.category.isIlliquid ?? false) { continue }
             mapA[acc.id, default: Bucket(acc: acc)].sum += value(v)
         }
         for v in b.values {
             guard let acc = v.account else { continue }
+            if !inc && (acc.assetType?.category.isIlliquid ?? false) { continue }
             mapB[acc.id, default: Bucket(acc: acc)].sum += value(v)
         }
 

@@ -98,6 +98,7 @@ struct TrendsView: View {
         }
         .onAppear { recompute() }
         .onChange(of: app.displayCurrency) { _, _ in recompute() }
+        .onChange(of: app.includeIlliquidInNetWorth) { _, _ in recompute() }
         .onChange(of: range) { _, _ in recompute() }
         .onChange(of: seriesMode) { _, _ in recompute() }
         .onChange(of: filters) { _, _ in recompute() }
@@ -320,6 +321,17 @@ struct TrendsView: View {
                 .foregroundStyle(Color.lInk)
                 .symbolSize(28)
             }
+            if let goal = goalDisplay() {
+                RuleMark(y: .value("Goal", goal))
+                    .foregroundStyle(Color.lGain.opacity(0.7))
+                    .lineStyle(StrokeStyle(lineWidth: 1.4, dash: [5, 4]))
+                    .annotation(position: .top, alignment: .trailing) {
+                        Text("Goal · \(Fmt.compact(goal, app.displayCurrency))")
+                            .font(Typo.mono(10, weight: .semibold))
+                            .foregroundStyle(Color.lGain)
+                            .padding(.horizontal, 4)
+                    }
+            }
             if let h = hovered {
                 RuleMark(x: .value("Date", h.date))
                     .foregroundStyle(Color.lInk3.opacity(0.5))
@@ -371,6 +383,17 @@ struct TrendsView: View {
         }
     }
 
+    private func goalDisplay() -> Double? {
+        guard app.netWorthGoal > 0 else { return nil }
+        let rate = snapshots.first?.usdToInrRate ?? 1
+        return CurrencyConverter.convert(
+            nativeValue: app.netWorthGoal,
+            from: app.netWorthGoalCurrency,
+            to: app.displayCurrency,
+            usdToInrRate: rate
+        )
+    }
+
     private func totalTooltip(for h: SnapshotTotal) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(h.label)
@@ -407,6 +430,17 @@ struct TrendsView: View {
                     .foregroundStyle(by: .value("Series", line.label))
                     .symbolSize(20)
                 }
+            }
+            if let goal = goalDisplay() {
+                RuleMark(y: .value("Goal", goal))
+                    .foregroundStyle(Color.lGain.opacity(0.7))
+                    .lineStyle(StrokeStyle(lineWidth: 1.4, dash: [5, 4]))
+                    .annotation(position: .top, alignment: .trailing) {
+                        Text("Goal · \(Fmt.compact(goal, app.displayCurrency))")
+                            .font(Typo.mono(10, weight: .semibold))
+                            .foregroundStyle(Color.lGain)
+                            .padding(.horizontal, 4)
+                    }
             }
             if let h = hovered {
                 RuleMark(x: .value("Date", h.date))
@@ -610,6 +644,9 @@ struct TrendsView: View {
                 if (acc.country?.name ?? "") != f.matchValue { return false }
             case .assetType:
                 if (acc.assetType?.name ?? "—") != f.matchValue { return false }
+            case .group:
+                let g = acc.groupName.isEmpty ? "Ungrouped" : acc.groupName
+                if g != f.matchValue { return false }
             }
         }
         return true
@@ -617,13 +654,14 @@ struct TrendsView: View {
 
     private func recompute() {
         let target = app.displayCurrency
+        let inc = app.includeIlliquidInNetWorth
         let snaps = rangedSnapshots
 
         var totals: [SnapshotTotal] = []
         for s in snaps {
             let t = s.values
                 .filter(passesFilters)
-                .reduce(0.0) { $0 + CurrencyConverter.netDisplayValue(for: $1, in: target) }
+                .reduce(0.0) { $0 + CurrencyConverter.netDisplayValue(for: $1, in: target, includeIlliquid: inc) }
             totals.append(SnapshotTotal(snapshotID: s.id, date: s.date, label: s.label, total: t))
         }
         cachedSnapshotTotals = totals
@@ -668,6 +706,7 @@ struct TrendsView: View {
 
     private func computeMultiSeries(snaps: [Snapshot], target: Currency) -> [SeriesLine] {
         var byLabel: [String: (color: Color, points: [SeriesPoint])] = [:]
+        let inc = app.includeIlliquidInNetWorth
 
         for s in snaps {
             var bucket: [String: Double] = [:]
@@ -675,8 +714,9 @@ struct TrendsView: View {
 
             for v in s.values where passesFilters(v) {
                 guard let acc = v.account else { continue }
+                if !inc && (acc.assetType?.category.isIlliquid ?? false) { continue }
                 let (label, color) = seriesKey(for: acc)
-                bucket[label, default: 0] += CurrencyConverter.netDisplayValue(for: v, in: target)
+                bucket[label, default: 0] += CurrencyConverter.netDisplayValue(for: v, in: target, includeIlliquid: inc)
                 colorByLabel[label] = color
             }
 

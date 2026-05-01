@@ -6,6 +6,7 @@ enum GroupKey: String, CaseIterable, Identifiable {
     case person   = "Person"
     case country  = "Country"
     case assetType = "Type"
+    case group    = "Group"
     var id: String { rawValue }
 }
 
@@ -29,6 +30,7 @@ struct BreakdownView: View {
     @State private var filters: [Filter] = []
     @State private var hovered: TreemapTile?
     @State private var historyAccount: Account?
+    @State private var detailAccount: Account?
     @Query private var accounts: [Account]
 
     @State private var cachedSorted: [Row] = []
@@ -73,6 +75,7 @@ struct BreakdownView: View {
             }
         }
         .sheet(item: $historyAccount) { AccountHistoryView(account: $0) }
+        .sheet(item: $detailAccount) { AccountDetailSheet(account: $0) }
         .onAppear {
             consumePending()
             recompute()
@@ -83,6 +86,7 @@ struct BreakdownView: View {
         .onChange(of: groupBy) { _, _ in recompute() }
         .onChange(of: filters) { _, _ in recompute() }
         .onChange(of: snapshots.count) { _, _ in recompute() }
+        .onChange(of: app.includeIlliquidInNetWorth) { _, _ in recompute() }
     }
 
     private func consumePending() {
@@ -170,8 +174,10 @@ struct BreakdownView: View {
         guard let s = active else { return [] }
         let target = app.displayCurrency
         let rate = s.usdToInrRate
+        let inc = app.includeIlliquidInNetWorth
         return s.values.compactMap { v -> Row? in
             guard let acc = v.account else { return nil }
+            if !inc && (acc.assetType?.category.isIlliquid ?? false) { return nil }
             let personName = acc.person?.name ?? "—"
             let countryName = acc.country?.name ?? ""
             let r = Row(
@@ -192,7 +198,10 @@ struct BreakdownView: View {
                     from: acc.nativeCurrency,
                     to: target,
                     usdToInrRate: rate
-                )
+                ),
+                institution: acc.institution,
+                notes: acc.notes,
+                groupName: acc.groupName
             )
             for f in filters {
                 switch f.key {
@@ -214,6 +223,7 @@ struct BreakdownView: View {
             case .person:    return row.person
             case .country:   return row.countryName
             case .assetType: return row.assetType
+            case .group:     return row.groupName.isEmpty ? "Ungrouped" : row.groupName
             }
         }
         return groups.map { (groupLabel, groupRows) in
@@ -250,6 +260,8 @@ struct BreakdownView: View {
         case .country:
             if let sample { return sample.countryColor }
         case .assetType:
+            break
+        case .group:
             break
         }
         return Palette.fallback(for: group)
@@ -342,6 +354,9 @@ struct BreakdownView: View {
         let currency: Currency
         let nativeValue: Double
         let display: Double
+        let institution: String
+        let notes: String
+        let groupName: String
     }
 
     private var filteredRows: [Row] {
@@ -353,6 +368,8 @@ struct BreakdownView: View {
                 || r.countryName.lowercased().contains(q)
                 || r.assetType.lowercased().contains(q)
                 || r.category.lowercased().contains(q)
+                || r.institution.lowercased().contains(q)
+                || r.notes.lowercased().contains(q)
         }
     }
 
@@ -365,7 +382,7 @@ struct BreakdownView: View {
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(Color.lInk3)
-                TextField("Search name, owner, country, type", text: $tableSearch)
+                TextField("Search name, owner, country, type, institution, notes", text: $tableSearch)
                     .textFieldStyle(.plain)
                     .font(Typo.sans(12))
                     .foregroundStyle(Color.lInk)
@@ -442,6 +459,12 @@ struct BreakdownView: View {
                     .padding(.horizontal, 18)
                     .padding(.vertical, 10)
                     .background(i.isMultiple(of: 2) ? Color.clear : Color.lSunken.opacity(0.5))
+                    .contentShape(Rectangle())
+                    .onTapGesture(count: 2) {
+                        if let acc = accounts.first(where: { $0.id == r.accountID }) {
+                            detailAccount = acc
+                        }
+                    }
 
                     if i < rows.count - 1 {
                         Divider().overlay(Color.lLine)

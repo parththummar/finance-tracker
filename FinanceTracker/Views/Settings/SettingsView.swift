@@ -3,6 +3,7 @@ import SwiftData
 import UniformTypeIdentifiers
 import AppKit
 import Charts
+import Combine
 
 struct SettingsView: View {
     @EnvironmentObject var app: AppState
@@ -16,8 +17,10 @@ struct SettingsView: View {
     @State private var backupMessage: String?
     @State private var categoryColorRefresh = UUID()
     @State private var backupsTick: Int = 0
+    @StateObject private var backupsCache = BackupsCache()
+    @State private var verifyResults: [URL: BackupService.VerifyResult] = [:]
+    @State private var verifyingURL: URL?
     @State private var pendingRestore: URL?
-    @State private var showingRestorePicker = false
     @State private var showingRelaunchAlert = false
     @State private var showingImportPicker = false
     @State private var importResult: String?
@@ -25,6 +28,7 @@ struct SettingsView: View {
     @AppStorage("autoBackupEnabled")   private var autoBackupEnabled: Bool = true
     @AppStorage("autoBackupInterval")  private var autoBackupIntervalRaw: String = BackupInterval.weekly.rawValue
     @AppStorage("autoBackupKeep")      private var autoBackupKeep: Int = 10
+    @AppStorage("customBackupPath")    private var customBackupPath: String = ""
 
     private struct PendingExport: Identifiable {
         let id = UUID()
@@ -38,22 +42,30 @@ struct SettingsView: View {
                      title: "Settings",
                      titleItalic: "— configuration")
 
-            LazyVGrid(
-                columns: [GridItem(.flexible(), spacing: 18), GridItem(.flexible(), spacing: 18)],
-                alignment: .leading,
-                spacing: 18
-            ) {
-                displayPanel
-                remindersPanel
-                categoryColorsPanel
-                fxRatePanel
-                autoBackupPanel
-                exportPanel
-                importPanel
-                dataPanel
+            HStack(alignment: .top, spacing: 18) {
+                VStack(spacing: 18) {
+                    displayPanel
+                    categoryColorsPanel
+                    fxRatePanel
+                    dataPanel
+                }
+                .frame(maxWidth: .infinity, alignment: .top)
+
+                VStack(spacing: 18) {
+                    remindersPanel
+                    autoBackupPanel
+                    exportPanel
+                    importPanel
+                }
+                .frame(maxWidth: .infinity, alignment: .top)
             }
         }
         .frame(maxWidth: 980, alignment: .leading)
+        .task { await backupsCache.loadIfNeeded() }
+        .task(id: backupsTick) {
+            guard backupsTick > 0 else { return }
+            await backupsCache.refresh()
+        }
         .confirmationDialog("Reset all data?",
                             isPresented: $confirmingReset,
                             titleVisibility: .visible) {
@@ -80,19 +92,10 @@ struct SettingsView: View {
         } message: {
             Text("Current data will be replaced. A safety copy of the current store is saved to the backups folder before restore. App will quit after restore — relaunch to load the restored data.")
         }
-        .alert("Restore complete", isPresented: $showingRelaunchAlert) {
+        .alert("Restore staged", isPresented: $showingRelaunchAlert) {
             Button("Quit Now") { NSApp.terminate(nil) }
         } message: {
-            Text("The backup has been restored. Relaunch FinanceTracker to load the restored data.")
-        }
-        .fileImporter(
-            isPresented: $showingRestorePicker,
-            allowedContentTypes: [UTType(filenameExtension: "store") ?? .data],
-            allowsMultipleSelection: false
-        ) { result in
-            if case .success(let urls) = result, let url = urls.first {
-                pendingRestore = url
-            }
+            Text("Backup will replace the live store on next launch. Quit now, then reopen FinanceTracker — the restore applies before any data loads. A safety copy of the current store is saved automatically.")
         }
         .fileImporter(
             isPresented: $showingImportPicker,
@@ -167,11 +170,52 @@ struct SettingsView: View {
                             )
                         )
                     }
+                    Divider().overlay(Color.lLine)
+                    settingRow(label: "Include illiquid in net worth",
+                               sublabel: "Real estate, land, vehicles, collectibles") {
+                        Toggle("", isOn: Binding(
+                            get: { app.includeIlliquidInNetWorth },
+                            set: { app.includeIlliquidInNetWorth = $0 }
+                        ))
+                        .toggleStyle(.switch)
+                        .labelsHidden()
+                    }
+                    Divider().overlay(Color.lLine)
+                    settingRow(label: "Compact mode",
+                               sublabel: "Shrinks padding + headers for laptop screens.") {
+                        Toggle("", isOn: Binding(
+                            get: { app.compactMode },
+                            set: { app.compactMode = $0 }
+                        ))
+                        .toggleStyle(.switch)
+                        .labelsHidden()
+                    }
+                    Divider().overlay(Color.lLine)
+                    settingRow(label: "Net worth goal",
+                               sublabel: "Target line on Dashboard + Trends. Set to 0 to disable.") {
+                        HStack(spacing: 6) {
+                            TextField("0", value: Binding(
+                                get: { app.netWorthGoal },
+                                set: { app.netWorthGoal = max(0, $0) }
+                            ), format: .number)
+                            .textFieldStyle(.roundedBorder)
+                            .font(Typo.mono(12))
+                            .frame(width: 130)
+                            SegControl<Currency>(
+                                options: Currency.allCases.map { (label: $0.rawValue, value: $0) },
+                                selection: Binding(
+                                    get: { app.netWorthGoalCurrency },
+                                    set: { app.netWorthGoalCurrency = $0 }
+                                )
+                            )
+                        }
+                    }
                 }
                 .padding(.horizontal, 18).padding(.vertical, 4)
             }
         }
     }
+
 
     private var categoryColorsPanel: some View {
         Panel {
@@ -241,9 +285,14 @@ struct SettingsView: View {
                     .opacity(autoBackupEnabled ? 1 : 0.5)
 
                     HStack {
-                        Text("Keep last")
-                            .font(Typo.sans(12, weight: .medium))
-                            .foregroundStyle(Color.lInk)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Keep last")
+                                .font(Typo.sans(12, weight: .medium))
+                                .foregroundStyle(Color.lInk)
+                            Text("Auto + pre-restore only. Manual, snapshot-lock, and quit backups have separate retention.")
+                                .font(Typo.sans(10.5))
+                                .foregroundStyle(Color.lInk3)
+                        }
                         Spacer()
                         Stepper(value: $autoBackupKeep, in: 1...50) {
                             Text("\(autoBackupKeep)")
@@ -263,14 +312,14 @@ struct SettingsView: View {
                                 Text("Backup now")
                             }
                         }
-                        GhostButton(action: { showingRestorePicker = true }) {
+                        GhostButton(action: pickRestoreFile) {
                             HStack(spacing: 5) {
                                 Image(systemName: "arrow.counterclockwise").font(.system(size: 10, weight: .bold))
                                 Text("Restore from file…")
                             }
                         }
                         Spacer()
-                        if let dir = BackupService.backupsDir() {
+                        if let dir = backupsCache.filesDir {
                             GhostButton(action: {
                                 NSWorkspace.shared.activateFileViewerSelecting([dir])
                             }) {
@@ -282,6 +331,10 @@ struct SettingsView: View {
                         }
                     }
 
+                    Divider().overlay(Color.lLine)
+
+                    customFolderRow
+
                     backupList
                 }
                 .padding(18)
@@ -289,8 +342,66 @@ struct SettingsView: View {
         }
     }
 
+    private var customFolderRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Custom backup folder")
+                        .font(Typo.sans(12, weight: .medium))
+                        .foregroundStyle(Color.lInk)
+                    Text(customBackupPath.isEmpty
+                         ? "Auto-saves on snapshot lock and on app quit. Keeps last 3."
+                         : customBackupPath)
+                        .font(Typo.sans(11))
+                        .foregroundStyle(Color.lInk3)
+                        .lineLimit(2)
+                        .truncationMode(.middle)
+                }
+                Spacer()
+                GhostButton(action: pickCustomBackupFolder) {
+                    HStack(spacing: 5) {
+                        Image(systemName: "folder.badge.gearshape").font(.system(size: 10, weight: .bold))
+                        Text(customBackupPath.isEmpty ? "Choose…" : "Change…")
+                    }
+                }
+                if !customBackupPath.isEmpty {
+                    GhostButton(action: clearCustomBackupFolder) {
+                        Text("Clear")
+                    }
+                }
+            }
+        }
+    }
+
+    private func pickCustomBackupFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.canCreateDirectories = true
+        panel.prompt = "Choose"
+        panel.title = "Choose backup folder"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            let bookmark = try url.bookmarkData(
+                options: [.withSecurityScope],
+                includingResourceValuesForKeys: nil,
+                relativeTo: nil
+            )
+            UserDefaults.standard.set(bookmark, forKey: "customBackupBookmark")
+            customBackupPath = url.path
+        } catch {
+            backupMessage = "Could not save bookmark: \(error.localizedDescription)"
+        }
+    }
+
+    private func clearCustomBackupFolder() {
+        UserDefaults.standard.removeObject(forKey: "customBackupBookmark")
+        customBackupPath = ""
+    }
+
     private var autoBackupMeta: String {
-        if let last = BackupService.lastAutoBackupDate() {
+        if let last = backupsCache.lastAuto {
             let f = RelativeDateTimeFormatter()
             f.unitsStyle = .short
             return "last auto: \(f.localizedString(for: last, relativeTo: Date()))"
@@ -300,9 +411,10 @@ struct SettingsView: View {
 
     @ViewBuilder
     private var backupList: some View {
-        let items = BackupService.list()
-        if items.isEmpty {
-            Text("No backups yet. Automatic backups will appear here after the app launches past the interval.")
+        if backupsCache.files.isEmpty {
+            Text(backupsCache.loading
+                 ? "Loading backups…"
+                 : "No backups yet. Automatic backups will appear here after the app launches past the interval.")
                 .font(Typo.serifItalic(11))
                 .foregroundStyle(Color.lInk3)
         } else {
@@ -312,17 +424,16 @@ struct SettingsView: View {
                         .font(Typo.eyebrow).tracking(1.2)
                         .foregroundStyle(Color.lInk3)
                     Spacer()
-                    Text("\(items.count) total")
+                    Text("\(backupsCache.files.count) total")
                         .font(Typo.sans(11))
                         .foregroundStyle(Color.lInk3)
                 }
                 .padding(.bottom, 6)
-                ForEach(items.prefix(6)) { b in
+                ForEach(backupsCache.files.prefix(6)) { b in
                     backupRow(b)
                     Divider().overlay(Color.lLine)
                 }
             }
-            .id(backupsTick)
         }
     }
 
@@ -349,12 +460,37 @@ struct SettingsView: View {
                     Text(b.kind == .auto ? "AUTO" : b.kind == .manual ? "MANUAL" : "")
                         .font(Typo.eyebrow).tracking(1.0)
                         .foregroundStyle(Color.lInk3)
+                    if let res = verifyResults[b.url] {
+                        Text("·").foregroundStyle(Color.lInk4)
+                        Text(res.summary)
+                            .font(Typo.mono(10))
+                            .foregroundStyle(res.isOk ? Color.lGain : Color.lLoss)
+                            .lineLimit(1)
+                    }
                 }
             }
             Spacer(minLength: 8)
+            GhostButton(action: { verifyBackup(b.url) }) {
+                if verifyingURL == b.url {
+                    ProgressView().controlSize(.mini)
+                } else {
+                    Text("Verify")
+                }
+            }
+            .disabled(verifyingURL != nil)
             GhostButton(action: { pendingRestore = b.url }) { Text("Restore") }
         }
         .padding(.vertical, 6)
+    }
+
+    @MainActor
+    private func verifyBackup(_ url: URL) {
+        verifyingURL = url
+        Task { @MainActor in
+            let result = BackupService.verify(url)
+            verifyResults[url] = result
+            verifyingURL = nil
+        }
     }
 
     private func backupNow() {
@@ -366,12 +502,23 @@ struct SettingsView: View {
         }
     }
 
+    private func pickRestoreFile() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.allowedContentTypes = [UTType(filenameExtension: "store") ?? .data]
+        panel.title = "Choose backup to restore"
+        panel.prompt = "Restore"
+        panel.directoryURL = backupsCache.filesDir
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        pendingRestore = url
+    }
+
     private func performRestore(_ url: URL) {
         do {
-            try context.save()
-            try BackupService.restore(from: url)
-            backupMessage = "Restored from \(url.lastPathComponent)."
-            backupsTick &+= 1
+            try BackupService.stagePendingRestore(from: url)
+            backupMessage = "Restore staged. Quit to apply."
             showingRelaunchAlert = true
         } catch {
             backupMessage = "Restore failed: \(error.localizedDescription)"
@@ -522,11 +669,18 @@ struct SettingsView: View {
     // MARK: - Row helpers
 
     @ViewBuilder
-    private func settingRow<Control: View>(label: String, @ViewBuilder control: () -> Control) -> some View {
+    private func settingRow<Control: View>(label: String, sublabel: String? = nil, @ViewBuilder control: () -> Control) -> some View {
         HStack {
-            Text(label)
-                .font(Typo.sans(12, weight: .medium))
-                .foregroundStyle(Color.lInk)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(label)
+                    .font(Typo.sans(12, weight: .medium))
+                    .foregroundStyle(Color.lInk)
+                if let sublabel {
+                    Text(sublabel)
+                        .font(Typo.sans(10.5))
+                        .foregroundStyle(Color.lInk3)
+                }
+            }
             Spacer()
             control()
         }
@@ -546,7 +700,8 @@ struct SettingsView: View {
                     exportRow(
                         icon: "square.and.arrow.down",
                         title: "Import full history CSV…",
-                        subtitle: "Reverse of the Full history export"
+                        subtitle: "Reverse of the Full history export",
+                        actionLabel: "Import"
                     ) { showingImportPicker = true }
                 }
                 .padding(18)
@@ -569,7 +724,7 @@ struct SettingsView: View {
         }
     }
 
-    private func exportRow(icon: String, title: String, subtitle: String, action: @escaping () -> Void) -> some View {
+    private func exportRow(icon: String, title: String, subtitle: String, actionLabel: String = "Export", action: @escaping () -> Void) -> some View {
         HStack(spacing: 12) {
             Image(systemName: icon)
                 .font(.system(size: 13))
@@ -584,7 +739,7 @@ struct SettingsView: View {
                     .foregroundStyle(Color.lInk3)
             }
             Spacer()
-            GhostButton(action: action) { Text("Export") }
+            GhostButton(action: action) { Text(actionLabel) }
         }
     }
 
@@ -697,3 +852,30 @@ private struct CategoryColorRow: View {
         .onAppear { color = Palette.color(for: category) }
     }
 }
+
+@MainActor
+final class BackupsCache: ObservableObject {
+    @Published var files: [BackupService.BackupFile] = []
+    @Published var filesDir: URL?
+    @Published var lastAuto: Date?
+    @Published var loading: Bool = false
+    private var loaded: Bool = false
+
+    func loadIfNeeded() async {
+        guard !loaded else { return }
+        await refresh()
+    }
+
+    func refresh() async {
+        if files.isEmpty { loading = true }
+        let payload = await Task.detached(priority: .utility) { () -> ([BackupService.BackupFile], URL?, Date?) in
+            (BackupService.list(), BackupService.backupsDir(), BackupService.lastAutoBackupDate())
+        }.value
+        files = payload.0
+        filesDir = payload.1
+        lastAuto = payload.2
+        loading = false
+        loaded = true
+    }
+}
+

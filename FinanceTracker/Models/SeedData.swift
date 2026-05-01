@@ -24,6 +24,7 @@ enum SeedData {
             ("NPS", .retirement), ("HSA", .retirement),
             ("Crypto", .crypto),
             ("Insurance", .insurance),
+            ("Home", .realEstate), ("Land", .realEstate), ("Vehicle", .realEstate),
             ("Loan", .debt)
         ]
         var typeMap: [String: AssetType] = [:]

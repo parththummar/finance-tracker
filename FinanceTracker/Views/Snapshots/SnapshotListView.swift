@@ -20,7 +20,8 @@ struct SnapshotListView: View {
     ])
 
     private func totalFor(_ s: Snapshot) -> Double {
-        s.values.reduce(0) { $0 + CurrencyConverter.netDisplayValue(for: $1, in: app.displayCurrency) }
+        let inc = app.includeIlliquidInNetWorth
+        return s.values.reduce(0) { $0 + CurrencyConverter.netDisplayValue(for: $1, in: app.displayCurrency, includeIlliquid: inc) }
     }
 
     var body: some View {
@@ -163,6 +164,7 @@ struct SnapshotListView: View {
                             Button("Unlock…") { confirmUnlock = s }
                         }
                         Button("Set active") { app.activeSnapshotID = s.id }
+                        Button("Export PDF…") { exportSnapshotPDF(s) }
                         Button("Delete…", role: .destructive) { confirmDelete = s }
                     } label: {
                         Image(systemName: "ellipsis")
@@ -174,11 +176,25 @@ struct SnapshotListView: View {
                     .menuStyle(.borderlessButton)
                     .menuIndicator(.hidden)
                     .fixedSize()
+                    .pointerStyle(.link)
                 }
             }
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 12)
         .background(idx.isMultiple(of: 2) ? Color.clear : Color.lSunken.opacity(0.5))
+        .rowClickable { editing = s }
+    }
+
+    @MainActor
+    private func exportSnapshotPDF(_ s: Snapshot) {
+        let prior = snapshots.first { $0.date < s.date && $0.id != s.id }
+        _ = SnapshotPDFExporter.export(
+            snapshot: s,
+            previousSnapshot: prior,
+            displayCurrency: app.displayCurrency,
+            includeIlliquid: app.includeIlliquidInNetWorth,
+            theme: app.theme
+        )
     }
 }

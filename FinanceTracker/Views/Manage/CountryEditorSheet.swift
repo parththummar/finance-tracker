@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import AppKit
 
 struct CountryEditorSheet: View {
     @Environment(\.dismiss) private var dismiss
@@ -13,6 +14,7 @@ struct CountryEditorSheet: View {
     @State private var defaultCurrency: Currency = .USD
     @State private var color: Color = .blue
     @State private var errorMessage: String?
+    @State private var showingFlagPicker: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -20,7 +22,18 @@ struct CountryEditorSheet: View {
             Form {
                 TextField("Code (US, IN)", text: $code).textCase(.uppercase)
                 TextField("Name", text: $name)
-                TextField("Flag emoji", text: $flag)
+                HStack(spacing: 8) {
+                    TextField("Flag emoji", text: $flag)
+                    if !flag.isEmpty {
+                        Text(flag).font(.system(size: 22))
+                    }
+                    Button {
+                        showingFlagPicker = true
+                    } label: {
+                        Label("Pick country…", systemImage: "flag.fill")
+                    }
+                    .help("Searchable list of all country flags")
+                }
                 Picker("Default Currency", selection: $defaultCurrency) {
                     ForEach(Currency.allCases) { Text($0.rawValue).tag($0) }
                 }
@@ -41,8 +54,11 @@ struct CountryEditorSheet: View {
             }
         }
         .padding(24)
-        .frame(minWidth: 420)
+        .frame(minWidth: 480)
         .onAppear(perform: prefill)
+        .sheet(isPresented: $showingFlagPicker) {
+            FlagPickerSheet(flag: $flag, code: $code)
+        }
     }
 
     private func prefill() {

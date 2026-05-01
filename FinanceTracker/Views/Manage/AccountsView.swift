@@ -8,6 +8,7 @@ struct AccountsView: View {
     @Query(sort: \Account.name) private var accounts: [Account]
     @Query(sort: \Snapshot.date) private var snapshots: [Snapshot]
     @State private var editing: Account?
+    @State private var detailing: Account?
     @State private var creatingNew: Bool = false
     @State private var showInactive: Bool = true
     @State private var historyAccount: Account?
@@ -49,6 +50,7 @@ struct AccountsView: View {
         .sheet(item: $editing) { AccountEditorSheet(existing: $0) }
         .sheet(isPresented: $creatingNew) { AccountEditorSheet(existing: nil) }
         .sheet(item: $historyAccount) { AccountHistoryView(account: $0) }
+        .sheet(item: $detailing) { AccountDetailSheet(account: $0) }
         .confirmationDialog("Delete \(confirmDelete?.name ?? "")?",
                             isPresented: Binding(get: { confirmDelete != nil }, set: { if !$0 { confirmDelete = nil } }),
                             titleVisibility: .visible) {
@@ -140,10 +142,28 @@ struct AccountsView: View {
     private func row(_ a: Account, idx: Int) -> some View {
         HStack(spacing: 0) {
             ResizableCell(sizer: sizer, colID: "name") {
-                Text(a.name)
-                    .font(Typo.sans(13, weight: .medium))
-                    .foregroundStyle(Color.lInk)
-                    .lineLimit(1)
+                HStack(spacing: 6) {
+                    Text(a.name)
+                        .font(Typo.sans(13, weight: .medium))
+                        .foregroundStyle(Color.lInk)
+                        .lineLimit(1)
+                    if !a.groupName.isEmpty {
+                        Text(a.groupName)
+                            .font(Typo.eyebrow).tracking(1.0)
+                            .foregroundStyle(Color.lInk2)
+                            .padding(.horizontal, 5).padding(.vertical, 1)
+                            .overlay(Capsule().stroke(Color.lLine, lineWidth: 1))
+                    }
+                    if AccountAnalysis.isStale(a) {
+                        Text("STALE")
+                            .font(Typo.eyebrow).tracking(1.0)
+                            .foregroundStyle(Color.lLoss)
+                            .padding(.horizontal, 5).padding(.vertical, 1)
+                            .overlay(Capsule().stroke(Color.lLoss.opacity(0.5), lineWidth: 1))
+                            .help("Last 3 snapshot values identical. Click to review.")
+                    }
+                    Spacer(minLength: 0)
+                }
             }
             ResizableCell(sizer: sizer, colID: "person") {
                 HStack(spacing: 6) {
@@ -198,12 +218,13 @@ struct AccountsView: View {
             }
             ResizableCell(sizer: sizer, colID: "actions") {
                 HStack(spacing: 6) {
-                    GhostButton(action: { historyAccount = a }) {
-                        Image(systemName: "chart.line.uptrend.xyaxis")
+                    GhostButton(action: { detailing = a }) {
+                        Image(systemName: "rectangle.and.text.magnifyingglass")
                             .font(.system(size: 10, weight: .bold))
                     }
                     GhostButton(action: { editing = a }) { Text("Edit") }
                     Menu {
+                        Button("Open detail…") { detailing = a }
                         Button("Show History") { historyAccount = a }
                         Button(a.isActive ? "Archive (Retire)" : "Reactivate") {
                             a.isActive.toggle()
@@ -223,12 +244,12 @@ struct AccountsView: View {
                     .menuStyle(.borderlessButton)
                     .menuIndicator(.hidden)
                     .fixedSize()
+                    .pointerStyle(.link)
                 }
             }
         }
         .padding(.horizontal, 18).padding(.vertical, 10)
         .background(idx.isMultiple(of: 2) ? Color.clear : Color.lSunken.opacity(0.5))
-        .contentShape(Rectangle())
-        .onTapGesture(count: 2) { historyAccount = a }
+        .rowClickable { editing = a }
     }
 }

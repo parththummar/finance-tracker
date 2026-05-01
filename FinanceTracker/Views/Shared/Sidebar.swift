@@ -17,6 +17,7 @@ struct Sidebar: View {
             NavItem(screen: .trends, label: "Trends", icon: "waveform.path.ecg"),
             NavItem(screen: .snapshots, label: "Historical", icon: "chart.line.uptrend.xyaxis"),
             NavItem(screen: .diff, label: "Diff", icon: "arrow.left.arrow.right"),
+            NavItem(screen: .reports, label: "Reports", icon: "doc.text.magnifyingglass"),
         ]),
         NavGroup(section: "Breakdown", items: [
             NavItem(screen: .breakdown, label: "By Allocation", icon: "square.grid.2x2"),
@@ -79,7 +80,7 @@ struct Sidebar: View {
                     .font(Typo.serifNum(19))
                     .foregroundStyle(Color.lInk)
                     .lineLimit(1)
-                Text("Wealth · Offline")
+                Text("v\(AppInfo.versionString)")
                     .font(Typo.eyebrow)
                     .textCase(.uppercase)
                     .tracking(1.2)
@@ -116,6 +117,7 @@ struct Sidebar: View {
             .contentShape(RoundedRectangle(cornerRadius: 8))
         }
         .buttonStyle(.plain)
+        .pointerStyle(.link)
         .padding(.horizontal, 10)
     }
 

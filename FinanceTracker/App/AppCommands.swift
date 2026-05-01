@@ -91,6 +91,9 @@ struct SearchCommands: Commands {
             Button("Find") { app?.globalSearchFocusTick &+= 1 }
                 .keyboardShortcut("f", modifiers: .command)
                 .disabled(app == nil)
+            Button("Quick Jump") { app?.globalSearchFocusTick &+= 1 }
+                .keyboardShortcut("p", modifiers: .command)
+                .disabled(app == nil)
         }
     }
 }

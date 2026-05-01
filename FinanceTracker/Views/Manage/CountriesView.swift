@@ -141,5 +141,6 @@ struct CountriesView: View {
         }
         .padding(.horizontal, 18).padding(.vertical, 10)
         .background(idx.isMultiple(of: 2) ? Color.clear : Color.lSunken.opacity(0.5))
+        .rowClickable { editing = c }
     }
 }

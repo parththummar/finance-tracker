@@ -70,6 +70,7 @@ struct DashboardView: View {
             } else {
                 VStack(alignment: .leading, spacing: 28) {
                     hero
+                    digestPanel
                     kpiGrid
                     composition
                     if !cachedLiabilities.isEmpty {
@@ -85,6 +86,7 @@ struct DashboardView: View {
         .onChange(of: snapshots.count) { _, _ in recompute() }
         .onChange(of: snapshots.map { $0.isLocked }) { _, _ in recompute() }
         .onChange(of: snapshots.map { $0.usdToInrRate }) { _, _ in recompute() }
+        .onChange(of: app.includeIlliquidInNetWorth) { _, _ in recompute() }
     }
 
     private func recompute() {
@@ -159,7 +161,8 @@ struct DashboardView: View {
 
     private func total(_ s: Snapshot?, target: Currency) -> Double {
         guard let s else { return 0 }
-        return s.values.reduce(0) { $0 + CurrencyConverter.netDisplayValue(for: $1, in: target) }
+        let inc = app.includeIlliquidInNetWorth
+        return s.values.reduce(0) { $0 + CurrencyConverter.netDisplayValue(for: $1, in: target, includeIlliquid: inc) }
     }
 
     private func sumCats(_ s: Snapshot?, _ cats: [AssetCategory], target: Currency) -> Double {
@@ -171,10 +174,11 @@ struct DashboardView: View {
 
     private func computePersonItems(_ s: Snapshot?, target: Currency) -> [AllocItem] {
         guard let s else { return [] }
+        let inc = app.includeIlliquidInNetWorth
         var buckets: [String: (Double, Color)] = [:]
         for v in s.values {
             guard let acc = v.account, let p = acc.person else { continue }
-            let amt = CurrencyConverter.netDisplayValue(for: v, in: target)
+            let amt = CurrencyConverter.netDisplayValue(for: v, in: target, includeIlliquid: inc)
             let col = Color.fromHex(p.colorHex) ?? Palette.fallback(for: p.name)
             buckets[p.name, default: (0, col)].0 += amt
         }
@@ -187,10 +191,11 @@ struct DashboardView: View {
 
     private func computeCountryItems(_ s: Snapshot?, target: Currency) -> [AllocItem] {
         guard let s else { return [] }
+        let inc = app.includeIlliquidInNetWorth
         var buckets: [String: (Double, Color, String)] = [:]
         for v in s.values {
             guard let acc = v.account, let c = acc.country else { continue }
-            let amt = CurrencyConverter.netDisplayValue(for: v, in: target)
+            let amt = CurrencyConverter.netDisplayValue(for: v, in: target, includeIlliquid: inc)
             let key = "\(c.flag) \(c.name)"
             let col = Color.fromHex(c.colorHex) ?? Palette.fallback(for: c.code)
             buckets[key, default: (0, col, c.name)].0 += amt
@@ -204,9 +209,11 @@ struct DashboardView: View {
 
     private func computeTypeItems(_ s: Snapshot?, target: Currency) -> [AllocItem] {
         guard let s else { return [] }
+        let inc = app.includeIlliquidInNetWorth
         var buckets: [AssetCategory: Double] = [:]
         for v in s.values {
             guard let acc = v.account, let t = acc.assetType else { continue }
+            if !inc && t.category.isIlliquid { continue }
             buckets[t.category, default: 0] += CurrencyConverter.netDisplayValue(for: v, in: target)
         }
         return buckets.map {
@@ -217,13 +224,16 @@ struct DashboardView: View {
 
     private func computeMovers(cur: Snapshot?, prev: Snapshot?, target: Currency) -> [MoverRow] {
         guard let cur, let prev else { return [] }
+        let inc = app.includeIlliquidInNetWorth
         var prevMap: [UUID: Double] = [:]
         for v in prev.values where v.account != nil {
+            if !inc && CurrencyConverter.isIlliquid(v) { continue }
             prevMap[v.account!.id] = CurrencyConverter.netDisplayValue(for: v, in: target)
         }
         var list: [MoverRow] = []
         for v in cur.values {
             guard let acc = v.account else { continue }
+            if !inc && CurrencyConverter.isIlliquid(v) { continue }
             let now = CurrencyConverter.netDisplayValue(for: v, in: target)
             let before = prevMap[acc.id] ?? 0
             let diff = now - before
@@ -376,6 +386,17 @@ struct DashboardView: View {
                 .foregroundStyle(Color.lInk)
                 .lineStyle(StrokeStyle(lineWidth: 1.4, lineCap: .round, lineJoin: .round))
                 .interpolationMethod(.catmullRom)
+                if let goal = goalDisplay() {
+                    RuleMark(y: .value("Goal", goal))
+                        .foregroundStyle(Color.lGain.opacity(0.7))
+                        .lineStyle(StrokeStyle(lineWidth: 1.2, dash: [4, 3]))
+                        .annotation(position: .top, alignment: .trailing) {
+                            Text("Goal · \(Fmt.compact(goal, app.displayCurrency))")
+                                .font(Typo.mono(9, weight: .semibold))
+                                .foregroundStyle(Color.lGain)
+                                .padding(.horizontal, 4)
+                        }
+                }
             }
             .chartXAxis(.hidden)
             .chartYAxis(.hidden)
@@ -385,6 +406,70 @@ struct DashboardView: View {
         .background(Color.lBg2)
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.lLine, lineWidth: 1))
         .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+
+    @ViewBuilder
+    private var digestPanel: some View {
+        let sentence = digestSentence
+        if !sentence.isEmpty {
+            Panel {
+                HStack(alignment: .top, spacing: 12) {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(Color.lInk2)
+                        .padding(.top, 1)
+                    Text(sentence)
+                        .font(Typo.serifItalic(15))
+                        .foregroundStyle(Color.lInk)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
+                }
+                .padding(16)
+            }
+        }
+    }
+
+    private var digestSentence: String {
+        guard cachedCurTotal != 0 || cachedPrevTotal != 0 else { return "" }
+        let delta = cachedCurTotal - cachedPrevTotal
+        let pct = cachedPrevTotal == 0 ? 0 : delta / abs(cachedPrevTotal)
+        let direction = delta >= 0 ? "grew" : "shrank"
+        let absDelta = Fmt.compact(abs(delta), app.displayCurrency)
+        let pctStr = String(format: "%.1f%%", abs(pct) * 100)
+
+        let gainers = cachedMovers.filter { $0.up }.prefix(2).map { $0.account.name }
+        let losers  = cachedMovers.filter { !$0.up }.prefix(2).map { $0.account.name }
+
+        var parts: [String] = []
+        parts.append("Net worth \(direction) \(absDelta) (\(pctStr)) since the previous snapshot.")
+        if !gainers.isEmpty {
+            let names = gainers.joined(separator: " and ")
+            parts.append("Lifted by \(names).")
+        }
+        if !losers.isEmpty {
+            let names = losers.joined(separator: " and ")
+            parts.append("Dragged by \(names).")
+        }
+        if let goal = goalDisplay(), goal > 0 {
+            let remain = goal - cachedCurTotal
+            if remain > 0 {
+                parts.append("\(Fmt.compact(remain, app.displayCurrency)) to reach goal.")
+            } else {
+                parts.append("Goal cleared by \(Fmt.compact(-remain, app.displayCurrency)).")
+            }
+        }
+        return parts.joined(separator: " ")
+    }
+
+    private func goalDisplay() -> Double? {
+        guard app.netWorthGoal > 0 else { return nil }
+        let rate = snapshots.first?.usdToInrRate ?? 1
+        return CurrencyConverter.convert(
+            nativeValue: app.netWorthGoal,
+            from: app.netWorthGoalCurrency,
+            to: app.displayCurrency,
+            usdToInrRate: rate
+        )
     }
 
     private func footnote(for s: Snapshot) -> String {

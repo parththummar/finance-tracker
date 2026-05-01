@@ -1,6 +1,37 @@
 import SwiftUI
 import AppKit
 
+// MARK: - Clickable row helper
+
+extension View {
+    /// Tap on row body opens action; inner Buttons keep their own actions
+    /// because Button views consume taps before this gesture fires.
+    /// Cursor changes to pointing-hand on hover.
+    func rowClickable(_ action: @escaping () -> Void) -> some View {
+        self
+            .contentShape(Rectangle())
+            .onTapGesture(perform: action)
+            .pointerStyle(.link)
+    }
+
+    /// Mark a button-like element so the cursor reflects clickability.
+    func clickableCursor() -> some View {
+        self.pointerStyle(.link)
+    }
+}
+
+// MARK: - Density (compact mode)
+
+private struct CompactModeKey: EnvironmentKey {
+    static let defaultValue: Bool = false
+}
+extension EnvironmentValues {
+    var compactMode: Bool {
+        get { self[CompactModeKey.self] }
+        set { self[CompactModeKey.self] = newValue }
+    }
+}
+
 // MARK: - Panel (replaces Card)
 
 struct Panel<Content: View>: View {
@@ -24,20 +55,21 @@ struct Panel<Content: View>: View {
 struct PanelHead: View {
     let title: String
     var meta: String? = nil
+    @Environment(\.compactMode) private var compact
     var body: some View {
         HStack {
             Text(title)
-                .font(Typo.sans(14, weight: .semibold))
+                .font(Typo.sans(compact ? 12.5 : 14, weight: .semibold))
                 .foregroundStyle(Color.lInk)
             Spacer()
             if let meta {
                 Text(meta)
-                    .font(Typo.sans(12))
+                    .font(Typo.sans(compact ? 10.5 : 12))
                     .foregroundStyle(Color.lInk3)
             }
         }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 14)
+        .padding(.horizontal, compact ? 14 : 18)
+        .padding(.vertical, compact ? 10 : 14)
         .overlay(Rectangle().frame(height: 1).foregroundStyle(Color.lLine), alignment: .bottom)
     }
 }
@@ -472,6 +504,7 @@ struct SegControl<T: Hashable>: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .pointerStyle(.link)
                 if idx < options.count - 1 {
                     Rectangle().fill(Color.lLine).frame(width: 1, height: 18)
                 }
@@ -528,6 +561,7 @@ struct GhostButton<Label: View>: View {
                 .contentShape(Capsule())
         }
         .buttonStyle(.plain)
+        .pointerStyle(.link)
     }
 }
 
@@ -545,6 +579,7 @@ struct IconButton: View {
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)
+        .pointerStyle(.link)
     }
 }
 
@@ -567,7 +602,7 @@ struct StackedHBar: View {
                 ForEach(items) { i in
                     Rectangle()
                         .fill(i.color)
-                        .frame(width: geo.size.width * CGFloat(abs(i.value) / total) - 1)
+                        .frame(width: max(0, geo.size.width * CGFloat(abs(i.value) / total) - 1))
                 }
             }
         }

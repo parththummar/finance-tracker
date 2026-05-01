@@ -8,6 +8,8 @@ enum Fmt {
         f.currencySymbol = ccy.symbol
         f.maximumFractionDigits = fractionDigits
         f.minimumFractionDigits = fractionDigits
+        // INR uses Indian numbering grouping (1,23,45,678) via en_IN locale.
+        if ccy == .INR { f.locale = Locale(identifier: "en_IN") }
         return f.string(from: NSNumber(value: value)) ?? "\(value)"
     }
 
@@ -42,6 +44,13 @@ enum Fmt {
         let abs = Swift.abs(value)
         let sign = value < 0 ? "−" : ""
         let sym = ccy.symbol
+        if ccy == .INR {
+            // Indian numbering: lakh (1e5), crore (1e7), arab (1e9 = 100Cr but we keep Cr)
+            if abs >= 10_000_000 { return "\(sign)\(sym)\(String(format: "%.2fCr", abs / 10_000_000)) " .trimmingCharacters(in: .whitespaces) }
+            if abs >= 100_000    { return "\(sign)\(sym)\(String(format: "%.2fL", abs / 100_000))" }
+            if abs >= 1_000      { return "\(sign)\(sym)\(String(format: "%.1fK", abs / 1_000))" }
+            return currency(value, ccy)
+        }
         if abs >= 1_000_000_000 { return "\(sign)\(sym)\(String(format: "%.2fB", abs / 1_000_000_000))" }
         if abs >= 1_000_000     { return "\(sign)\(sym)\(String(format: "%.2fM", abs / 1_000_000))" }
         if abs >= 10_000        { return "\(sign)\(sym)\(String(format: "%.1fK", abs / 1_000))" }

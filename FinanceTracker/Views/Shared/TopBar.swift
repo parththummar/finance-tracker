@@ -59,6 +59,7 @@ struct TopBar: View {
             .menuStyle(.borderlessButton)
             .menuIndicator(.hidden)
             .fixedSize()
+            .pointerStyle(.link)
 
             PrimaryButton(action: { showingNewSnapshot = true }) {
                 HStack(spacing: 5) {
@@ -128,6 +129,7 @@ struct TopBar: View {
             .menuStyle(.borderlessButton)
             .menuIndicator(.hidden)
             .fixedSize()
+            .pointerStyle(.link)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
@@ -148,6 +150,7 @@ struct TopBar: View {
         case .trends:     return "Trends"
         case .snapshots:  return "Historical"
         case .diff:       return "Diff"
+        case .reports:    return "Reports"
         case .accounts:   return "All Assets"
         case .people:     return "By Person"
         case .countries:  return "By Country"

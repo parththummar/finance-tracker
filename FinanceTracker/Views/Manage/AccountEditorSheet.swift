@@ -19,7 +19,16 @@ struct AccountEditorSheet: View {
     @State private var institution: String = ""
     @State private var notes: String = ""
     @State private var isActive: Bool = true
+    @State private var groupName: String = ""
     @State private var errorMessage: String?
+    @State private var savedToast: String?
+
+    @AppStorage("acct.lastPersonID")    private var lastPersonIDStr: String = ""
+    @AppStorage("acct.lastCountryID")   private var lastCountryIDStr: String = ""
+    @AppStorage("acct.lastAssetTypeID") private var lastAssetTypeIDStr: String = ""
+    @AppStorage("acct.lastCurrency")    private var lastCurrencyRaw: String = Currency.USD.rawValue
+    @AppStorage("acct.lastGroup")       private var lastGroup: String = ""
+    @AppStorage("acct.lastInstitution") private var lastInstitution: String = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -65,6 +74,8 @@ struct AccountEditorSheet: View {
                 TextField("Institution (optional)", text: $institution)
                 TextField("Notes (optional)", text: $notes)
 
+                groupPicker
+
                 Toggle("Active", isOn: $isActive)
             }
             .formStyle(.grouped)
@@ -74,15 +85,69 @@ struct AccountEditorSheet: View {
             }
 
             HStack {
+                if let toast = savedToast {
+                    HStack(spacing: 5) {
+                        Image(systemName: "checkmark.circle.fill").foregroundStyle(Color.lGain)
+                            .font(.system(size: 11))
+                        Text(toast).font(Typo.sans(11)).foregroundStyle(Color.lInk2)
+                    }
+                    .transition(.opacity)
+                }
                 Spacer()
                 Button("Cancel") { dismiss() }
-                Button { save() } label: { Label("Save", systemImage: "checkmark") }
-                    .keyboardShortcut(.defaultAction)
+                if existing == nil {
+                    Button { save(continueAdding: true) } label: {
+                        Label("Save & Add Next", systemImage: "plus.circle")
+                    }
+                    .keyboardShortcut("s", modifiers: [.command, .shift])
+                }
+                Button { save(continueAdding: false) } label: {
+                    Label(existing == nil ? "Save & Close" : "Save", systemImage: "checkmark")
+                }
+                .keyboardShortcut(.defaultAction)
             }
         }
         .padding(24)
-        .frame(minWidth: 520)
+        .frame(minWidth: 560)
         .onAppear(perform: prefill)
+        .animation(.easeInOut(duration: 0.2), value: savedToast)
+    }
+
+    private var existingGroupNames: [String] {
+        let names = allAccounts.map(\.groupName).filter { !$0.isEmpty }
+        return Array(Set(names)).sorted()
+    }
+
+    @ViewBuilder
+    private var groupPicker: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text("Group")
+                Spacer()
+                if !existingGroupNames.isEmpty {
+                    Menu {
+                        Button("None") { groupName = "" }
+                        Divider()
+                        ForEach(existingGroupNames, id: \.self) { g in
+                            Button(g) { groupName = g }
+                        }
+                    } label: {
+                        HStack(spacing: 3) {
+                            Text("Pick existing")
+                            Image(systemName: "chevron.down").font(.system(size: 8, weight: .bold))
+                        }
+                        .font(Typo.mono(11))
+                    }
+                    .menuStyle(.borderlessButton)
+                    .fixedSize()
+                }
+                TextField("Type group name (or leave empty)", text: $groupName)
+                    .frame(width: 220)
+            }
+            Text("Type a new name to create a group, or pick an existing one. Groups are created on save.")
+                .font(Typo.sans(10.5))
+                .foregroundStyle(Color.lInk3)
+        }
     }
 
     private var duplicateWarning: String? {
@@ -100,18 +165,31 @@ struct AccountEditorSheet: View {
     }
 
     private func prefill() {
-        guard let a = existing else { return }
-        name = a.name
-        personID = a.person?.id
-        countryID = a.country?.id
-        assetTypeID = a.assetType?.id
-        nativeCurrency = a.nativeCurrency
-        institution = a.institution
-        notes = a.notes
-        isActive = a.isActive
+        if let a = existing {
+            name = a.name
+            personID = a.person?.id
+            countryID = a.country?.id
+            assetTypeID = a.assetType?.id
+            nativeCurrency = a.nativeCurrency
+            institution = a.institution
+            notes = a.notes
+            isActive = a.isActive
+            groupName = a.groupName
+            return
+        }
+        // New account: prefill from last-saved.
+        if personID == nil, let id = UUID(uuidString: lastPersonIDStr),
+           people.contains(where: { $0.id == id }) { personID = id }
+        if countryID == nil, let id = UUID(uuidString: lastCountryIDStr),
+           countries.contains(where: { $0.id == id }) { countryID = id }
+        if assetTypeID == nil, let id = UUID(uuidString: lastAssetTypeIDStr),
+           assetTypes.contains(where: { $0.id == id }) { assetTypeID = id }
+        if let c = Currency(rawValue: lastCurrencyRaw) { nativeCurrency = c }
+        if institution.isEmpty { institution = lastInstitution }
+        if groupName.isEmpty { groupName = lastGroup }
     }
 
-    private func save() {
+    private func save(continueAdding: Bool = false) {
         let trimmed = name.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { errorMessage = "Name required."; return }
         guard let p = people.first(where: { $0.id == personID }) else { errorMessage = "Pick person."; return }
@@ -128,6 +206,7 @@ struct AccountEditorSheet: View {
             return
         }
 
+        let trimmedGroup = groupName.trimmingCharacters(in: .whitespaces)
         if let a = existing {
             a.name = trimmed
             a.person = p
@@ -137,14 +216,39 @@ struct AccountEditorSheet: View {
             a.institution = institution
             a.notes = notes
             a.isActive = isActive
+            a.groupName = trimmedGroup
         } else {
             let a = Account(name: trimmed, person: p, country: c, assetType: t,
                             nativeCurrency: nativeCurrency, institution: institution,
                             notes: notes, isActive: isActive)
+            a.groupName = trimmedGroup
             context.insert(a)
         }
 
-        do { try context.save(); dismiss() }
+        do {
+            try context.save()
+            errorMessage = nil
+            // Remember last selections for next "Save & Add Next" / next sheet open.
+            lastPersonIDStr    = p.id.uuidString
+            lastCountryIDStr   = c.id.uuidString
+            lastAssetTypeIDStr = t.id.uuidString
+            lastCurrencyRaw    = nativeCurrency.rawValue
+            lastGroup          = trimmedGroup
+            lastInstitution    = institution
+
+            if continueAdding {
+                savedToast = "Added “\(trimmed)”. Continue adding…"
+                // Reset name + notes; keep person/country/type/ccy/inst/group.
+                name = ""
+                notes = ""
+                Task {
+                    try? await Task.sleep(nanoseconds: 1_800_000_000)
+                    await MainActor.run { savedToast = nil }
+                }
+            } else {
+                dismiss()
+            }
+        }
         catch { errorMessage = "Save failed: \(error.localizedDescription)" }
     }
 }

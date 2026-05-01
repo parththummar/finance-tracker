@@ -30,4 +30,25 @@ enum CurrencyConverter {
         let magnitude = abs(raw)
         return isDebt ? -magnitude : raw
     }
+
+    /// True when the asset value belongs to an illiquid category (real estate, land, etc.).
+    static func isIlliquid(_ assetValue: AssetValue) -> Bool {
+        assetValue.account?.assetType?.category.isIlliquid ?? false
+    }
+
+    /// Net display value, optionally gating illiquid assets out of the total.
+    static func netDisplayValue(for assetValue: AssetValue,
+                                in target: Currency,
+                                includeIlliquid: Bool) -> Double {
+        if !includeIlliquid && isIlliquid(assetValue) { return 0 }
+        return netDisplayValue(for: assetValue, in: target)
+    }
+
+    /// Display value (no debt sign flip), optionally gating illiquid assets to zero.
+    static func displayValue(for assetValue: AssetValue,
+                             in target: Currency,
+                             includeIlliquid: Bool) -> Double {
+        if !includeIlliquid && isIlliquid(assetValue) { return 0 }
+        return displayValue(for: assetValue, in: target)
+    }
 }

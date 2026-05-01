@@ -12,8 +12,13 @@ enum AssetCategory: String, Codable, CaseIterable, Identifiable {
     case retirement = "Retirement"
     case crypto = "Crypto"
     case insurance = "Insurance"
+    case realEstate = "Real Estate"
     case debt = "Debt"
     var id: String { rawValue }
+
+    /// Long-term, illiquid assets (real estate, land, vehicles, collectibles).
+    /// Net-worth inclusion gated by AppState.includeIlliquidInNetWorth.
+    var isIlliquid: Bool { self == .realEstate }
 }
 
 enum LabelMode: String, Codable, CaseIterable, Identifiable {

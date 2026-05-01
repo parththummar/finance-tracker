@@ -55,13 +55,20 @@ enum Ink {
     static let accent = DualColor(light: Oklch.srgb(0.45, 0.08, 250), dark: Oklch.srgb(0.75, 0.10, 250))
 
     static let chart: [DualColor] = [
-        DualColor(light: Oklch.srgb(0.24, 0.03, 260), dark: Oklch.srgb(0.92, 0.006, 85)),
-        DualColor(light: Oklch.srgb(0.55, 0.12, 155), dark: Oklch.srgb(0.72, 0.14,  155)),
-        DualColor(light: Oklch.srgb(0.62, 0.14, 60),  dark: Oklch.srgb(0.78, 0.14,  60)),
-        DualColor(light: Oklch.srgb(0.55, 0.13, 25),  dark: Oklch.srgb(0.72, 0.15,  25)),
-        DualColor(light: Oklch.srgb(0.50, 0.10, 280), dark: Oklch.srgb(0.70, 0.12,  280)),
-        DualColor(light: Oklch.srgb(0.62, 0.08, 200), dark: Oklch.srgb(0.75, 0.08,  200)),
-        DualColor(light: Oklch.srgb(0.70, 0.02, 85),  dark: Oklch.srgb(0.55, 0.02,  85)),
+        // chart[0] — real estate: warm brown in dark (was near-white, clashed with text)
+        DualColor(light: Oklch.srgb(0.45, 0.09, 55),  dark: Oklch.srgb(0.68, 0.10, 55)),
+        // chart[1] — investment: green
+        DualColor(light: Oklch.srgb(0.55, 0.12, 155), dark: Oklch.srgb(0.72, 0.14, 155)),
+        // chart[2] — cash: orange
+        DualColor(light: Oklch.srgb(0.62, 0.14, 60),  dark: Oklch.srgb(0.78, 0.14, 60)),
+        // chart[3] — debt: red
+        DualColor(light: Oklch.srgb(0.55, 0.13, 25),  dark: Oklch.srgb(0.72, 0.15, 25)),
+        // chart[4] — retirement: purple
+        DualColor(light: Oklch.srgb(0.50, 0.10, 280), dark: Oklch.srgb(0.72, 0.13, 280)),
+        // chart[5] — crypto: teal
+        DualColor(light: Oklch.srgb(0.62, 0.08, 200), dark: Oklch.srgb(0.78, 0.10, 200)),
+        // chart[6] — insurance: yellow in dark (was desaturated gray)
+        DualColor(light: Oklch.srgb(0.65, 0.10, 95),  dark: Oklch.srgb(0.82, 0.13, 95)),
     ]
 }
 
@@ -183,6 +190,7 @@ enum Palette {
         case .cash:       return Ink.chart[2].color
         case .crypto:     return Ink.chart[5].color
         case .insurance:  return Ink.chart[6].color
+        case .realEstate: return Ink.chart[0].color
         case .debt:       return Ink.chart[3].color
         }
     }

@@ -3,13 +3,22 @@ import AppKit
 import Combine
 
 enum Screen: Hashable {
-    case dashboard, breakdown, trends, snapshots, diff, accounts, people, countries, assetTypes, settings
+    case dashboard, breakdown, trends, snapshots, diff, reports, accounts, people, countries, assetTypes, settings
 }
 
 final class AppState: ObservableObject {
     @AppStorage("displayCurrency") var displayCurrencyRaw: String = Currency.USD.rawValue
     @AppStorage("labelMode")       var labelModeRaw: String = LabelMode.dollar.rawValue
     @AppStorage("theme")           var themeRaw: String = AppTheme.system.rawValue
+    @AppStorage("includeIlliquidInNetWorth") var includeIlliquidInNetWorth: Bool = true
+    @AppStorage("netWorthGoal") var netWorthGoal: Double = 0  // 0 = disabled
+    @AppStorage("netWorthGoalCurrencyRaw") var netWorthGoalCurrencyRaw: String = Currency.USD.rawValue
+    @AppStorage("compactMode") var compactMode: Bool = false
+
+    var netWorthGoalCurrency: Currency {
+        get { Currency(rawValue: netWorthGoalCurrencyRaw) ?? .USD }
+        set { netWorthGoalCurrencyRaw = newValue.rawValue; objectWillChange.send() }
+    }
 
     @AppStorage("card.byPerson.style")   var byPersonStyleRaw: String = ChartStyle.donut.rawValue
     @AppStorage("card.byCountry.style")  var byCountryStyleRaw: String = ChartStyle.donut.rawValue
@@ -38,18 +47,12 @@ final class AppState: ObservableObject {
         }
     }
 
-    init() {
-        applyAppearance()
-    }
+    init() {}
 
     func applyAppearance() {
-        let appearance: NSAppearance?
-        switch theme {
-        case .system: appearance = nil
-        case .light:  appearance = NSAppearance(named: .aqua)
-        case .dark:   appearance = NSAppearance(named: .darkAqua)
-        }
-        NSApp.appearance = appearance
+        // Theme switching is handled via `.preferredColorScheme` on the WindowGroup.
+        // Setting NSApp.appearance directly conflicts with that and causes the
+        // first toggle back to .system to appear stuck.
     }
     var byPersonStyle: ChartStyle {
         get { ChartStyle(rawValue: byPersonStyleRaw) ?? .donut }

@@ -14,6 +14,15 @@ struct SnapshotEditorView: View {
     @State private var fetchError: String?
     @State private var showSavedToast = false
     @State private var saveError: String?
+    @State private var sanityWarning: SanityWarning?
+
+    private struct SanityWarning: Identifiable {
+        let id = UUID()
+        let dropPct: Double
+        let prevTotal: Double
+        let newTotal: Double
+        let dismissAfter: Bool
+    }
 
     private var previousSnapshot: Snapshot? {
         allSnapshots.first { $0.date < snapshot.date && $0.id != snapshot.id }
@@ -70,6 +79,31 @@ struct SnapshotEditorView: View {
         }
         .background(Color.lBg)
         .frame(minWidth: 980, minHeight: 680)
+        .confirmationDialog(
+            "Net worth dropped sharply — confirm save?",
+            isPresented: Binding(
+                get: { sanityWarning != nil },
+                set: { if !$0 { sanityWarning = nil } }
+            ),
+            titleVisibility: .visible,
+            presenting: sanityWarning
+        ) { warn in
+            Button("Save anyway", role: .destructive) {
+                let after = warn.dismissAfter
+                sanityWarning = nil
+                commitSave(dismissAfter: after)
+            }
+            Button("Review values", role: .cancel) {
+                sanityWarning = nil
+            }
+        } message: { warn in
+            Text("Total \(Fmt.compact(warn.prevTotal, app.displayCurrency)) → \(Fmt.compact(warn.newTotal, app.displayCurrency)) (−\(String(format: "%.1f%%", warn.dropPct * 100))). Likely a missed entry. Cancel to review, or save anyway if intentional.")
+        }
+        .onAppear { context.autosaveEnabled = false }
+        .onDisappear {
+            try? context.save()
+            context.autosaveEnabled = true
+        }
         .overlay(alignment: .top) {
             if showSavedToast {
                 HStack(spacing: 8) {
@@ -100,6 +134,7 @@ struct SnapshotEditorView: View {
                 snapshot.isLocked = true
                 snapshot.lockedAt = .now
                 try? context.save()
+                _ = BackupService.backupOnLock(label: snapshot.label)
             }
             Button("Cancel", role: .cancel) {}
         } message: {
@@ -201,14 +236,35 @@ struct SnapshotEditorView: View {
 
     // MARK: - Values panel
 
+    private var sortedValues: [AssetValue] {
+        func ccyRank(_ c: Currency?) -> Int {
+            switch c { case .USD: return 0; case .INR: return 1; case nil: return 99 }
+        }
+        return snapshot.values.sorted { lhs, rhs in
+            let lc = ccyRank(lhs.account?.nativeCurrency)
+            let rc = ccyRank(rhs.account?.nativeCurrency)
+            if lc != rc { return lc < rc }
+            let lp = lhs.account?.person?.name ?? ""
+            let rp = rhs.account?.person?.name ?? ""
+            let pcmp = lp.localizedCaseInsensitiveCompare(rp)
+            if pcmp != .orderedSame { return pcmp == .orderedAscending }
+            let la = lhs.account?.name ?? ""
+            let ra = rhs.account?.name ?? ""
+            let acmp = la.localizedCaseInsensitiveCompare(ra)
+            if acmp != .orderedSame { return acmp == .orderedAscending }
+            return lhs.id.uuidString < rhs.id.uuidString
+        }
+    }
+
     private var valuesPanel: some View {
         Panel {
             VStack(spacing: 0) {
-                PanelHead(title: "Account values", meta: "\(snapshot.values.count) rows")
+                PanelHead(title: "Account values", meta: "\(sortedValues.count) rows")
                 rowHeader
-                ForEach(Array(snapshot.values.enumerated()), id: \.element.id) { idx, v in
+                let values = sortedValues
+                ForEach(Array(values.enumerated()), id: \.element.id) { idx, v in
                     row(v, idx: idx)
-                    if idx < snapshot.values.count - 1 {
+                    if idx < values.count - 1 {
                         Divider().overlay(Color.lLine)
                     }
                 }
@@ -216,16 +272,17 @@ struct SnapshotEditorView: View {
                 totalsRow
             }
         }
+        .animation(.none, value: snapshot.values.count)
+        .transaction { $0.animation = nil }
     }
 
     private var rowHeader: some View {
         HStack {
             Text("Account").frame(maxWidth: .infinity, alignment: .leading)
             Text("Person").frame(width: 110, alignment: .leading)
-            Text("CCY").frame(width: 50, alignment: .leading)
             Text("Prev").frame(width: 130, alignment: .trailing)
             Text("Δ").frame(width: 130, alignment: .trailing)
-            Text("Native value").frame(width: 170, alignment: .trailing)
+            Text("Native value").frame(width: 210, alignment: .trailing)
         }
         .font(Typo.eyebrow).tracking(1.2).foregroundStyle(Color.lInk3)
         .padding(.horizontal, 18).padding(.vertical, 10)
@@ -248,11 +305,6 @@ struct SnapshotEditorView: View {
                 .font(Typo.sans(12))
                 .foregroundStyle(Color.lInk2)
                 .frame(width: 110, alignment: .leading)
-
-            Text(ccy.rawValue)
-                .font(Typo.mono(11))
-                .foregroundStyle(Color.lInk3)
-                .frame(width: 50, alignment: .leading)
 
             Group {
                 if let prev {
@@ -277,19 +329,32 @@ struct SnapshotEditorView: View {
             .frame(width: 130, alignment: .trailing)
 
             if snapshot.isLocked {
-                Text(Fmt.currency(v.nativeValue, ccy))
-                    .font(Typo.mono(13, weight: .semibold))
-                    .foregroundStyle(Color.lInk)
-                    .frame(width: 170, alignment: .trailing)
+                HStack(spacing: 6) {
+                    Text(Fmt.currency(v.nativeValue, ccy))
+                        .font(Typo.mono(13, weight: .semibold))
+                        .foregroundStyle(Color.lInk)
+                    Text(ccy.rawValue)
+                        .font(Typo.mono(10, weight: .medium))
+                        .foregroundStyle(Color.lInk3)
+                        .frame(width: 30, alignment: .leading)
+                }
+                .frame(width: 210, alignment: .trailing)
             } else {
-                TextField("", value: Binding(
-                    get: { v.nativeValue },
-                    set: { v.nativeValue = $0 }
-                ), format: .number)
-                .textFieldStyle(.roundedBorder)
-                .multilineTextAlignment(.trailing)
-                .font(Typo.mono(13))
-                .frame(width: 170)
+                HStack(spacing: 6) {
+                    TextField("", value: Binding(
+                        get: { v.nativeValue },
+                        set: { v.nativeValue = $0 }
+                    ), format: .number)
+                    .textFieldStyle(.roundedBorder)
+                    .multilineTextAlignment(.trailing)
+                    .font(Typo.mono(13))
+                    .frame(width: 170)
+                    Text(ccy.rawValue)
+                        .font(Typo.mono(10, weight: .medium))
+                        .foregroundStyle(Color.lInk3)
+                        .frame(width: 30, alignment: .leading)
+                }
+                .frame(width: 210, alignment: .trailing)
             }
         }
         .padding(.horizontal, 18).padding(.vertical, 10)
@@ -329,10 +394,16 @@ struct SnapshotEditorView: View {
             .font(Typo.mono(12, weight: .semibold))
             .frame(width: 130, alignment: .trailing)
 
-            Text(Fmt.currency(total, ccy))
-                .font(Typo.mono(14, weight: .bold))
-                .foregroundStyle(Color.lInk)
-                .frame(width: 170, alignment: .trailing)
+            HStack(spacing: 6) {
+                Text(Fmt.currency(total, ccy))
+                    .font(Typo.mono(14, weight: .bold))
+                    .foregroundStyle(Color.lInk)
+                Text(ccy.rawValue)
+                    .font(Typo.mono(10, weight: .medium))
+                    .foregroundStyle(Color.lInk3)
+                    .frame(width: 30, alignment: .leading)
+            }
+            .frame(width: 210, alignment: .trailing)
         }
         .padding(.horizontal, 18).padding(.vertical, 12)
         .background(Color.lSunken)
@@ -437,6 +508,24 @@ struct SnapshotEditorView: View {
             saveError = "Exchange rate must be positive before saving."
             return
         }
+        // Sanity check: net worth dropped >50% vs previous snapshot.
+        if let prev = previousTotalDisplay, prev > 0 {
+            let now = liveTotalDisplay
+            let dropPct = (prev - now) / prev
+            if dropPct > 0.5 {
+                sanityWarning = SanityWarning(
+                    dropPct: dropPct,
+                    prevTotal: prev,
+                    newTotal: now,
+                    dismissAfter: dismissAfter
+                )
+                return
+            }
+        }
+        commitSave(dismissAfter: dismissAfter)
+    }
+
+    private func commitSave(dismissAfter: Bool) {
         do {
             try context.save()
             saveError = nil
