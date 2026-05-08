@@ -14,6 +14,10 @@ struct AccountsView: View {
     @State private var historyAccount: Account?
     @State private var confirmDelete: Account?
     @State private var cachedTrends: [UUID: [Double]] = [:]
+    @State private var selectionMode: Bool = false
+    @State private var selection: Set<UUID> = []
+    @State private var bulkEditing: Bool = false
+    @State private var merging: Bool = false
     @StateObject private var sizer = ColumnSizer(tableID: "accounts", specs: [
         ColumnSpec(id: "name",    title: "Name",    minWidth: 140, defaultWidth: 240, flex: true),
         ColumnSpec(id: "person",  title: "Person",  minWidth: 90,  defaultWidth: 130),
@@ -45,6 +49,7 @@ struct AccountsView: View {
                     illustration: "list.bullet.rectangle"
                 )
             } else {
+                if selectionMode { selectionBar }
                 tablePanel
             }
         }
@@ -53,6 +58,18 @@ struct AccountsView: View {
         .sheet(isPresented: $creatingNew) { AccountEditorSheet(existing: nil) }
         .sheet(item: $historyAccount) { AccountHistoryView(account: $0) }
         .sheet(item: $detailing) { AccountDetailSheet(account: $0) }
+        .sheet(isPresented: $bulkEditing) {
+            BulkEditAccountsSheet(accountIDs: selection) {
+                selection.removeAll()
+                selectionMode = false
+            }
+        }
+        .sheet(isPresented: $merging) {
+            MergeAccountsSheet(candidateIDs: Array(selection)) {
+                selection.removeAll()
+                selectionMode = false
+            }
+        }
         .confirmationDialog("Delete \(confirmDelete?.name ?? "")?",
                             isPresented: Binding(get: { confirmDelete != nil }, set: { if !$0 { confirmDelete = nil } }),
                             titleVisibility: .visible) {
@@ -167,6 +184,12 @@ struct AccountsView: View {
             Text("Show retired")
                 .font(Typo.sans(12))
                 .foregroundStyle(Color.lInk2)
+            GhostButton(action: {
+                selectionMode.toggle()
+                if !selectionMode { selection.removeAll() }
+            }) {
+                Text(selectionMode ? "Done" : "Select")
+            }
             PrimaryButton(action: { creatingNew = true }) {
                 HStack(spacing: 5) {
                     Image(systemName: "plus").font(.system(size: 10, weight: .bold))
@@ -174,6 +197,31 @@ struct AccountsView: View {
                 }
             }
         }
+    }
+
+    private var selectionBar: some View {
+        HStack(spacing: 12) {
+            Text("\(selection.count) selected")
+                .font(Typo.sans(12, weight: .medium))
+                .foregroundStyle(Color.lInk2)
+            Spacer()
+            GhostButton(action: { selection = Set(visible.map(\.id)) }) {
+                Text("Select all")
+            }
+            GhostButton(action: { selection.removeAll() }) {
+                Text("Clear")
+            }
+            .disabled(selection.isEmpty)
+            GhostButton(action: { bulkEditing = true }) {
+                Text("Bulk Edit…")
+            }
+            .disabled(selection.isEmpty)
+            GhostButton(action: { merging = true }) {
+                Text("Merge…")
+            }
+            .disabled(selection.count != 2)
+        }
+        .padding(.horizontal, 4)
     }
 
     private var tablePanel: some View {
@@ -198,6 +246,17 @@ struct AccountsView: View {
 
     private func row(_ a: Account, idx: Int) -> some View {
         HStack(spacing: 0) {
+            if selectionMode {
+                Toggle("", isOn: Binding(
+                    get: { selection.contains(a.id) },
+                    set: { isOn in
+                        if isOn { selection.insert(a.id) } else { selection.remove(a.id) }
+                    }
+                ))
+                .toggleStyle(.checkbox)
+                .labelsHidden()
+                .padding(.trailing, 8)
+            }
             ResizableCell(sizer: sizer, colID: "name") {
                 HStack(spacing: 6) {
                     Text(a.name)
@@ -317,7 +376,20 @@ struct AccountsView: View {
             }
         }
         .padding(.horizontal, 18).padding(.vertical, 10)
-        .background(idx.isMultiple(of: 2) ? Color.clear : Color.lSunken.opacity(0.5))
-        .rowClickable { editing = a }
+        .background(rowBackground(a, idx: idx))
+        .rowClickable {
+            if selectionMode {
+                if selection.contains(a.id) { selection.remove(a.id) } else { selection.insert(a.id) }
+            } else {
+                editing = a
+            }
+        }
+    }
+
+    private func rowBackground(_ a: Account, idx: Int) -> Color {
+        if selectionMode && selection.contains(a.id) {
+            return Color.lInk.opacity(0.06)
+        }
+        return idx.isMultiple(of: 2) ? Color.clear : Color.lSunken.opacity(0.5)
     }
 }
