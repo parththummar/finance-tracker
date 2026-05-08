@@ -17,6 +17,7 @@ struct CountriesView: View {
     /// in-progress add row (`AddRow`).
     @State private var flagTarget: FlagPickerTarget?
     @FocusState private var focusedNewName: Bool
+    @AppStorage("displayCurrency") private var displayCurrencyRaw: String = Currency.USD.rawValue
 
     private enum FlagPickerTarget: Identifiable {
         case existing(Country)
@@ -30,13 +31,13 @@ struct CountriesView: View {
     }
 
     @StateObject private var sizer = ColumnSizer(tableID: "countries", specs: [
-        ColumnSpec(id: "color",    title: "Color",    minWidth: 60,  defaultWidth: 70,  resizable: false),
-        ColumnSpec(id: "flag",     title: "Flag",     minWidth: 50,  defaultWidth: 60,  resizable: false),
+        ColumnSpec(id: "color",    title: "Color",    minWidth: 60,  defaultWidth: 70,  resizable: false, sortable: false),
+        ColumnSpec(id: "flag",     title: "Flag",     minWidth: 50,  defaultWidth: 60,  resizable: false, sortable: false),
         ColumnSpec(id: "code",     title: "Code",     minWidth: 60,  defaultWidth: 80),
         ColumnSpec(id: "name",     title: "Name",     minWidth: 140, defaultWidth: 280, flex: true),
         ColumnSpec(id: "ccy",      title: "Ccy",      minWidth: 70,  defaultWidth: 110),
         ColumnSpec(id: "accounts", title: "Accounts", minWidth: 80,  defaultWidth: 100, alignment: .trailing),
-        ColumnSpec(id: "actions",  title: "",         minWidth: 60,  defaultWidth: 60,  alignment: .trailing, resizable: false),
+        ColumnSpec(id: "actions",  title: "",         minWidth: 60,  defaultWidth: 60,  alignment: .trailing, resizable: false, sortable: false),
     ])
 
     var body: some View {
@@ -110,7 +111,7 @@ struct CountriesView: View {
                 newCode = ""
                 newName = ""
                 newFlag = "🌐"
-                newCurrency = .USD
+                newCurrency = Currency(rawValue: displayCurrencyRaw) ?? .USD
                 DispatchQueue.main.async { focusedNewName = true }
             }) {
                 HStack(spacing: 5) {
@@ -121,6 +122,15 @@ struct CountriesView: View {
         }
     }
 
+    private var sortedRows: [Country] {
+        sizer.sorted(countries, comparators: [
+            "code":     { $0.code < $1.code },
+            "name":     { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending },
+            "ccy":      { $0.defaultCurrency.rawValue < $1.defaultCurrency.rawValue },
+            "accounts": { $0.accounts.count < $1.accounts.count },
+        ])
+    }
+
     private var tablePanel: some View {
         Panel {
             VStack(spacing: 0) {
@@ -129,9 +139,10 @@ struct CountriesView: View {
                 ResizableHeader(sizer: sizer)
                 ScrollView(.vertical) {
                     LazyVStack(spacing: 0) {
-                        ForEach(Array(countries.enumerated()), id: \.element.id) { idx, c in
+                        let sortedCountries = sortedRows
+                        ForEach(Array(sortedCountries.enumerated()), id: \.element.id) { idx, c in
                             row(c, idx: idx)
-                            if idx < countries.count - 1 || addingNew {
+                            if idx < sortedCountries.count - 1 || addingNew {
                                 Divider().overlay(Color.lLine)
                             }
                         }

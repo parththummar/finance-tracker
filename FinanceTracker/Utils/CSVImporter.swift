@@ -6,6 +6,8 @@ enum CSVImporter {
         var snapshotsCreated = 0
         var snapshotsSkipped = 0
         var accountsCreated = 0
+        var accountsUpdated = 0
+        var accountsUnchanged = 0
         var peopleCreated = 0
         var countriesCreated = 0
         var typesCreated = 0
@@ -24,6 +26,8 @@ enum CSVImporter {
             if valuesCreated > 0    { parts.append("\(valuesCreated) values") }
             let created = parts.isEmpty ? "nothing new" : parts.joined(separator: ", ")
             var s = "Imported \(created)."
+            if accountsUpdated > 0   { s += " \(accountsUpdated) accounts updated." }
+            if accountsUnchanged > 0 { s += " \(accountsUnchanged) accounts unchanged." }
             if valuesSkipped > 0    { s += " \(valuesSkipped) values already existed." }
             if rowsRejected > 0     { s += " \(rowsRejected) rows rejected." }
             return s
@@ -34,17 +38,203 @@ enum CSVImporter {
         case emptyFile
         case missingHeader(String)
         case parseError(String)
+        case unknownFormat
 
         var errorDescription: String? {
             switch self {
             case .emptyFile:               return "File is empty."
             case .missingHeader(let col):  return "Expected column “\(col)” missing from header."
             case .parseError(let msg):     return "Parse error: \(msg)"
+            case .unknownFormat:           return "Unrecognized CSV format. Expected Full history or Accounts list export."
             }
         }
     }
 
     // MARK: - Public entry
+
+    /// Auto-detect CSV format (Full history vs Accounts list) and dispatch.
+    static func importAuto(csv: String, context: ModelContext) throws -> Report {
+        let rows = try parseCSV(csv)
+        guard let first = rows.first else { throw ImportError.emptyFile }
+        let header = first.map { $0.trimmingCharacters(in: .whitespaces) }
+        if header.contains("snapshot_date") {
+            return try importFlatHistory(csv: csv, context: context)
+        }
+        if header.contains("name") && header.contains("asset_type") && header.contains("country_code") {
+            return try importAccounts(csv: csv, context: context)
+        }
+        throw ImportError.unknownFormat
+    }
+
+    /// Import the accounts schema exported by CSVExporter.accounts.
+    /// Header: name, person, country_code, country_name, asset_type, category,
+    ///         native_currency, institution, notes, active, cost_basis_native
+    /// Accounts are matched by (lowercased name, person id, country id). Existing
+    /// accounts are left as-is; new accounts are created. Person, country, and
+    /// asset type are created on demand.
+    static func importAccounts(csv: String, context: ModelContext) throws -> Report {
+        let rows = try parseCSV(csv)
+        guard rows.count >= 2 else { throw ImportError.emptyFile }
+        let header = rows[0].map { $0.trimmingCharacters(in: .whitespaces) }
+        let data = Array(rows.dropFirst())
+
+        func idx(_ name: String) throws -> Int {
+            guard let i = header.firstIndex(of: name) else {
+                throw ImportError.missingHeader(name)
+            }
+            return i
+        }
+        func optIdx(_ name: String) -> Int? { header.firstIndex(of: name) }
+
+        let iName    = try idx("name")
+        let iPerson  = try idx("person")
+        let iCC      = try idx("country_code")
+        let iCName   = try idx("country_name")
+        let iType    = try idx("asset_type")
+        let iCat     = try idx("category")
+        let iCcy     = try idx("native_currency")
+        let iInst    = try idx("institution")
+        let iNote    = optIdx("notes")
+        let iActive  = optIdx("active")
+        let iCost    = optIdx("cost_basis_native")
+
+        var report = Report()
+
+        var peopleByName = Dictionary(
+            uniqueKeysWithValues: ((try? context.fetch(FetchDescriptor<Person>())) ?? [])
+                .map { ($0.name, $0) }
+        )
+        var countriesByCode = Dictionary(
+            uniqueKeysWithValues: ((try? context.fetch(FetchDescriptor<Country>())) ?? [])
+                .map { ($0.code, $0) }
+        )
+        var typesByName = Dictionary(
+            uniqueKeysWithValues: ((try? context.fetch(FetchDescriptor<AssetType>())) ?? [])
+                .map { ($0.name, $0) }
+        )
+        func acctKey(name: String, personID: UUID?, countryID: UUID?) -> String {
+            "\(name.lowercased())|\(personID?.uuidString ?? "_")|\(countryID?.uuidString ?? "_")"
+        }
+        var accountsByKey: [String: Account] = [:]
+        for a in (try? context.fetch(FetchDescriptor<Account>())) ?? [] {
+            accountsByKey[acctKey(name: a.name, personID: a.person?.id, countryID: a.country?.id)] = a
+        }
+
+        for (ri, row) in data.enumerated() {
+            if row.allSatisfy({ $0.trimmingCharacters(in: .whitespaces).isEmpty }) { continue }
+            let lineNum = ri + 2
+
+            guard row.count >= header.count else {
+                report.rowsRejected += 1
+                report.errors.append("Line \(lineNum): too few columns.")
+                continue
+            }
+
+            let accountName = row[iName].trimmingCharacters(in: .whitespaces)
+            guard !accountName.isEmpty else {
+                report.rowsRejected += 1
+                report.errors.append("Line \(lineNum): empty name.")
+                continue
+            }
+            let personName = row[iPerson].trimmingCharacters(in: .whitespaces)
+            let cc = row[iCC].trimmingCharacters(in: .whitespaces)
+            let cname = row[iCName].trimmingCharacters(in: .whitespaces)
+            let typeName = row[iType].trimmingCharacters(in: .whitespaces)
+            let catStr = row[iCat].trimmingCharacters(in: .whitespaces)
+            let ccyStr = row[iCcy].trimmingCharacters(in: .whitespaces)
+            let institution = row[iInst]
+            let notes = iNote.map { row[$0] } ?? ""
+            let isActive: Bool = {
+                guard let i = iActive else { return true }
+                let s = row[i].trimmingCharacters(in: .whitespaces).lowercased()
+                if s.isEmpty { return true }
+                return s == "true" || s == "1" || s == "yes"
+            }()
+            let costBasis: Double = {
+                guard let i = iCost else { return 0 }
+                let s = row[i].trimmingCharacters(in: .whitespaces)
+                return Double(s) ?? 0
+            }()
+
+            guard let currency = Currency(rawValue: ccyStr) else {
+                report.rowsRejected += 1
+                report.errors.append("Line \(lineNum): unknown currency “\(ccyStr)”.")
+                continue
+            }
+
+            let person: Person? = {
+                guard !personName.isEmpty else { return nil }
+                if let p = peopleByName[personName] { return p }
+                let p = Person(name: personName)
+                context.insert(p)
+                peopleByName[personName] = p
+                report.peopleCreated += 1
+                return p
+            }()
+
+            let country: Country? = {
+                guard !cc.isEmpty else { return nil }
+                if let c = countriesByCode[cc] { return c }
+                let defaultCcy: Currency = cc.uppercased() == "IN" ? .INR : .USD
+                let c = Country(
+                    code: cc,
+                    name: cname.isEmpty ? cc : cname,
+                    flag: "",
+                    defaultCurrency: defaultCcy
+                )
+                context.insert(c)
+                countriesByCode[cc] = c
+                report.countriesCreated += 1
+                return c
+            }()
+
+            let type: AssetType? = {
+                guard !typeName.isEmpty else { return nil }
+                if let t = typesByName[typeName] { return t }
+                let cat = AssetCategory(rawValue: catStr) ?? .cash
+                let t = AssetType(name: typeName, category: cat)
+                context.insert(t)
+                typesByName[typeName] = t
+                report.typesCreated += 1
+                return t
+            }()
+
+            let key = acctKey(name: accountName, personID: person?.id, countryID: country?.id)
+            if let existing = accountsByKey[key] {
+                var changed = false
+                if existing.nativeCurrency != currency { existing.nativeCurrency = currency; changed = true }
+                if existing.institution != institution { existing.institution = institution; changed = true }
+                if existing.notes != notes { existing.notes = notes; changed = true }
+                if existing.isActive != isActive { existing.isActive = isActive; changed = true }
+                if existing.costBasis != costBasis { existing.costBasis = costBasis; changed = true }
+                if let type, existing.assetType?.id != type.id { existing.assetType = type; changed = true }
+                if changed { report.accountsUpdated += 1 } else { report.accountsUnchanged += 1 }
+                continue
+            }
+            guard let person, let country, let type else {
+                report.rowsRejected += 1
+                report.errors.append("Line \(lineNum): cannot create account “\(accountName)” without person/country/type.")
+                continue
+            }
+            let a = Account(
+                name: accountName,
+                person: person,
+                country: country,
+                assetType: type,
+                nativeCurrency: currency,
+                institution: institution,
+                notes: notes,
+                isActive: isActive
+            )
+            a.costBasis = costBasis
+            context.insert(a)
+            accountsByKey[key] = a
+            report.accountsCreated += 1
+        }
+
+        try context.save()
+        return report
+    }
 
     /// Import the flatAssetValues schema exported by CSVExporter.flatAssetValues.
     static func importFlatHistory(csv: String, context: ModelContext) throws -> Report {

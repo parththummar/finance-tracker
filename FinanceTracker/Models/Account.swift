@@ -17,6 +17,9 @@ final class Account {
     /// Aggregate cost basis in this account's `nativeCurrency`. Used to compute
     /// unrealized gain (currentValue − costBasis). 0 = unset / not tracked.
     var costBasis: Double = 0
+    /// User-defined ordering. Lower = earlier in lists. New accounts inherit
+    /// (max + 1). Default 0 lets old data fall to top until backfilled.
+    var sortIndex: Int = 0
 
     @Relationship(deleteRule: .cascade, inverse: \AssetValue.account)
     var values: [AssetValue] = []

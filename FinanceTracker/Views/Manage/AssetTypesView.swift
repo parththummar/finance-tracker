@@ -10,12 +10,20 @@ struct AssetTypesView: View {
     @State private var confirmDelete: AssetType?
     @State private var colorTick: Int = 0
     @StateObject private var sizer = ColumnSizer(tableID: "assetTypes", specs: [
-        ColumnSpec(id: "color",    title: "Color",    minWidth: 60,  defaultWidth: 80,  resizable: false),
+        ColumnSpec(id: "color",    title: "Color",    minWidth: 60,  defaultWidth: 80,  resizable: false, sortable: false),
         ColumnSpec(id: "name",     title: "Name",     minWidth: 140, defaultWidth: 280, flex: true),
         ColumnSpec(id: "category", title: "Category", minWidth: 110, defaultWidth: 160),
         ColumnSpec(id: "accounts", title: "Accounts", minWidth: 80,  defaultWidth: 110, alignment: .trailing),
-        ColumnSpec(id: "actions",  title: "",         minWidth: 160, defaultWidth: 160, alignment: .trailing, resizable: false),
+        ColumnSpec(id: "actions",  title: "",         minWidth: 160, defaultWidth: 160, alignment: .trailing, resizable: false, sortable: false),
     ])
+
+    private var sortedTypes: [AssetType] {
+        sizer.sorted(types, comparators: [
+            "name":     { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending },
+            "category": { $0.category.rawValue < $1.category.rawValue },
+            "accounts": { $0.accounts.count < $1.accounts.count },
+        ])
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -90,9 +98,10 @@ struct AssetTypesView: View {
                 ResizableHeader(sizer: sizer)
                 ScrollView(.vertical) {
                     LazyVStack(spacing: 0) {
-                        ForEach(Array(types.enumerated()), id: \.element.id) { idx, t in
+                        let rows = sortedTypes
+                        ForEach(Array(rows.enumerated()), id: \.element.id) { idx, t in
                             row(t, idx: idx)
-                            if idx < types.count - 1 {
+                            if idx < rows.count - 1 {
                                 Divider().overlay(Color.lLine)
                             }
                         }

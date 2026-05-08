@@ -7,6 +7,7 @@ import Combine
 
 struct SettingsView: View {
     @EnvironmentObject var app: AppState
+    @EnvironmentObject var lockGate: AppLockGate
     @Environment(\.modelContext) private var context
     @Query(sort: \Snapshot.date, order: .reverse) private var snapshots: [Snapshot]
     @Query(sort: \Account.name) private var accounts: [Account]
@@ -176,6 +177,52 @@ struct SettingsView: View {
                         .labelsHidden()
                         .disabled(!AppLockGate.available)
                         .pointerStyle(.link)
+                        .onChange(of: app.requireAppLock) { _, _ in
+                            lockGate.reapplyIdleSetting()
+                        }
+                    }
+
+                    Divider().overlay(Color.lLine)
+
+                    HStack(alignment: .center, spacing: 14) {
+                        ZStack {
+                            Circle()
+                                .fill(app.autoLockIdleMinutes > 0
+                                      ? Color.lGain.opacity(0.14)
+                                      : Color.lInk3.opacity(0.10))
+                                .frame(width: 36, height: 36)
+                            Image(systemName: "clock.badge.xmark")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(app.autoLockIdleMinutes > 0 ? Color.lGain : Color.lInk3)
+                        }
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Auto-lock when idle")
+                                .font(Typo.sans(13, weight: .semibold))
+                                .foregroundStyle(Color.lInk)
+                            Text("Re-engage the lock after no key or mouse activity in-app. Off when set to Never.")
+                                .font(Typo.sans(11))
+                                .foregroundStyle(Color.lInk3)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer(minLength: 6)
+                        Picker("", selection: Binding(
+                            get: { app.autoLockIdleMinutes },
+                            set: { newVal in
+                                app.autoLockIdleMinutes = newVal
+                                lockGate.reapplyIdleSetting()
+                            }
+                        )) {
+                            Text("Never").tag(0)
+                            Text("1 min").tag(1)
+                            Text("5 min").tag(5)
+                            Text("15 min").tag(15)
+                            Text("30 min").tag(30)
+                            Text("60 min").tag(60)
+                        }
+                        .labelsHidden()
+                        .pickerStyle(.menu)
+                        .frame(width: 110)
+                        .disabled(!app.requireAppLock || !AppLockGate.available)
                     }
 
                     Divider().overlay(Color.lLine)
@@ -1060,16 +1107,16 @@ struct SettingsView: View {
     private var importPanel: some View {
         Panel {
             VStack(spacing: 0) {
-                PanelHead(title: "Import", meta: "CSV · full history")
+                PanelHead(title: "Import", meta: "CSV · history or accounts")
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("Merges the Full history CSV export back into the local store. Existing snapshots, accounts, people, countries, and types are matched by name/date and not duplicated.")
+                    Text("Merges a Full history or Accounts list CSV export back into the local store. Format is auto-detected. Existing snapshots, accounts, people, countries, and types are matched and not duplicated.")
                         .font(Typo.sans(11.5))
                         .foregroundStyle(Color.lInk3)
                         .lineSpacing(2)
                     exportRow(
                         icon: "square.and.arrow.down",
-                        title: "Import full history CSV…",
-                        subtitle: "Reverse of the Full history export",
+                        title: "Import CSV…",
+                        subtitle: "Full history or Accounts list export",
                         actionLabel: "Import"
                     ) { showingImportPicker = true }
                 }
@@ -1084,7 +1131,7 @@ struct SettingsView: View {
         defer { if accessed { url.stopAccessingSecurityScopedResource() } }
         do {
             let text = try String(contentsOf: url, encoding: .utf8)
-            let report = try CSVImporter.importFlatHistory(csv: text, context: context)
+            let report = try CSVImporter.importAuto(csv: text, context: context)
             importIsError = false
             importResult = report.summary
         } catch {

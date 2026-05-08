@@ -40,8 +40,9 @@ struct AccountEditorSheet: View {
     @AppStorage("acct.lastPersonID")    private var lastPersonIDStr: String = ""
     @AppStorage("acct.lastCountryID")   private var lastCountryIDStr: String = ""
     @AppStorage("acct.lastAssetTypeID") private var lastAssetTypeIDStr: String = ""
-    @AppStorage("acct.lastCurrency")    private var lastCurrencyRaw: String = Currency.USD.rawValue
+    @AppStorage("acct.lastCurrency")    private var lastCurrencyRaw: String = ""
     @AppStorage("acct.lastInstitution") private var lastInstitution: String = ""
+    @AppStorage("displayCurrency")      private var displayCurrencyRaw: String = Currency.USD.rawValue
 
     private var currentSnapshot: FormSnapshot {
         FormSnapshot(name: name, personID: personID, countryID: countryID,
@@ -200,7 +201,19 @@ struct AccountEditorSheet: View {
            countries.contains(where: { $0.id == id }) { countryID = id }
         if assetTypeID == nil, let id = UUID(uuidString: lastAssetTypeIDStr),
            assetTypes.contains(where: { $0.id == id }) { assetTypeID = id }
-        if let c = Currency(rawValue: lastCurrencyRaw) { nativeCurrency = c }
+        if let c = Currency(rawValue: lastCurrencyRaw) {
+            nativeCurrency = c
+        } else if let c = Currency(rawValue: displayCurrencyRaw) {
+            nativeCurrency = c
+        }
+        // Country default currency (set by .onChange) only fires if user picks
+        // country *after* sheet open. If a country is prefilled from last-saved,
+        // honor its defaultCurrency over the display currency fallback.
+        if lastCurrencyRaw.isEmpty,
+           let id = countryID,
+           let c = countries.first(where: { $0.id == id }) {
+            nativeCurrency = c.defaultCurrency
+        }
         if institution.isEmpty { institution = lastInstitution }
     }
 
@@ -236,6 +249,7 @@ struct AccountEditorSheet: View {
                             nativeCurrency: nativeCurrency, institution: institution,
                             notes: notes, isActive: isActive)
             a.costBasis = max(0, costBasis)
+            a.sortIndex = (allAccounts.map(\.sortIndex).max() ?? 0) + 1
             context.insert(a)
         }
 

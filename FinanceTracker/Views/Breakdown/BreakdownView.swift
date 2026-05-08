@@ -375,8 +375,21 @@ struct BreakdownView: View {
         }
     }
 
+    private var sortedFilteredRows: [Row] {
+        let total = cachedTotal
+        return sizer.sorted(filteredRows, comparators: [
+            "account": { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending },
+            "owner":   { $0.person.localizedCaseInsensitiveCompare($1.person) == .orderedAscending },
+            "country": { $0.country < $1.country },
+            "type":    { $0.assetType.localizedCaseInsensitiveCompare($1.assetType) == .orderedAscending },
+            "native":  { $0.nativeValue < $1.nativeValue },
+            "display": { $0.display < $1.display },
+            "pct":     { (total > 0 ? $0.display / total : 0) < (total > 0 ? $1.display / total : 0) },
+        ])
+    }
+
     private var tableSection: some View {
-        let rows = filteredRows
+        let rows = sortedFilteredRows
         let total = cachedTotal
         return VStack(spacing: 0) {
             PanelHead(title: "Accounts", meta: "\(rows.count) of \(cachedSorted.count)")

@@ -12,6 +12,7 @@ enum DashboardWidget: String, CaseIterable, Identifiable, Codable {
     case liabilities
     case receivables
     case movers
+    case watchlist
 
     var id: String { rawValue }
 
@@ -26,6 +27,7 @@ enum DashboardWidget: String, CaseIterable, Identifiable, Codable {
         case .liabilities: return "Liabilities"
         case .receivables: return "Receivables"
         case .movers:      return "Top movers"
+        case .watchlist:   return "Watchlist (pinned)"
         }
     }
 
@@ -40,11 +42,12 @@ enum DashboardWidget: String, CaseIterable, Identifiable, Codable {
         case .liabilities: return "minus.circle"
         case .receivables: return "hourglass"
         case .movers:      return "arrow.up.arrow.down"
+        case .watchlist:   return "star"
         }
     }
 
     static var defaultOrder: [DashboardWidget] {
-        [.hero, .digest, .goal, .liquidity, .kpi, .composition, .liabilities, .receivables, .movers]
+        [.hero, .digest, .goal, .liquidity, .kpi, .watchlist, .composition, .liabilities, .receivables, .movers]
     }
 }
 

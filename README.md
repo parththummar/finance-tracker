@@ -10,16 +10,18 @@ Supports multiple people, countries, and currencies (notably **USD** and **INR**
 
 | Area | What it does |
 |------|----------------|
-| **Dashboard** | Hero net worth with embedded sparkline + inline delta chip, compare bar (vs Previous / Year ago), customizable widgets, Goal progress + ETA, Liquidity / runway, KPI cards, allocation breakdowns, movers, history |
+| **Dashboard** | Hero net worth with embedded sparkline + inline delta chip, compare bar (vs Previous / Year ago), customizable widgets, Goal progress + ETA, Liquidity / runway, KPI cards, allocation breakdowns, movers, history, **Watchlist of pinned accounts** |
 | **Allocation (Breakdown)** | Treemap, stacked bars, filters, accounts table with % of total; cross-link from Dashboard slices |
 | **Trends** | Time-series with hover tooltips, range filters, **forecast panel** (Linear / CAGR with ±1σ band) |
 | **Snapshots** | List, create, lock/unlock, edit per-account values with live totals and deltas; **completeness badge**, **pinned snapshot tabs**, missing-row highlights, stale-account flag |
 | **Diff** (`⌘⇧D`) | Snapshot diff between two dates, with **Money Flow** Sankey visual of where value moved per account |
 | **Reports** | Period compare, **QoQ heatmap** (quarters × categories), CAGR & monthly drift, asset-type drilldown |
-| **Manage** | Inline-edit grids for **people** (name, color, "In NW" toggle, quick-add row), countries, asset types, **accounts** (with optional cost basis + Unrealized column), and **receivables** (money owed to you, with start dates) |
-| **Settings** | Display, **App icon** picker (Ledgerly · Classic · Vault · Strata), **Dashboard widgets** show/hide/reorder, category colors, FX, backups, reminders, **Security** (App lock + Stealth mode + Menu bar item) |
-| **Productivity** | **⌘K command palette**, **recently viewed** list, search jumps directly into editors, three-level breadcrumb |
-| **Privacy** | **App lock** on launch (Touch ID / Apple Watch / system password), **Stealth mode** to blur amounts |
+| **Manage** | Inline-edit grids for **people** (name, color, "In NW" toggle, quick-add row), countries, asset types, **accounts** (with optional cost basis + Unrealized column, **drag-reorder**, **pin to watchlist**), and **receivables** (money owed to you, with start dates) |
+| **Grids** | **Sortable column headers** on every grid (ASC → DESC → unsorted, persisted), resizable columns |
+| **Import / Export** | CSV export of full history, accounts list, snapshot totals, receivables; **auto-detecting CSV import** that handles both Full history and Accounts list (creates or updates existing accounts) |
+| **Settings** | Display, **App icon** picker (Ledgerly · Classic · Vault · Strata), **Dashboard widgets** show/hide/reorder, category colors, FX, backups, reminders, **Security** (App lock + **Auto-lock when idle** + Stealth mode + Menu bar item) |
+| **Productivity** | **⌘K command palette**, **recently viewed** list (deleted entries dimmed and struck through), search jumps directly into editors, three-level breadcrumb |
+| **Privacy** | **App lock** on launch (Touch ID / Apple Watch / system password) with **idle auto-lock**, **Stealth mode** to blur amounts |
 
 **FX**: Live **USD→INR** fetch via [frankfurter.app](https://www.frankfurter.app/) (no API key). Rates can be pinned per snapshot; locked snapshots are not rewritten.
 

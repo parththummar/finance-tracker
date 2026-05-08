@@ -6,6 +6,8 @@ struct ReceivableEditorSheet: View {
     @Environment(\.modelContext) private var context
     let existing: Receivable?
 
+    @AppStorage("displayCurrency") private var displayCurrencyRaw: String = Currency.USD.rawValue
+
     @State private var name: String = ""
     @State private var debtor: String = ""
     @State private var nativeCurrency: Currency = .USD
@@ -96,6 +98,8 @@ struct ReceivableEditorSheet: View {
             notes = r.notes
             isActive = r.isActive
             startDate = r.startDate == .distantPast ? r.createdAt : r.startDate
+        } else if let c = Currency(rawValue: displayCurrencyRaw) {
+            nativeCurrency = c
         }
         initialSnapshot = currentSnapshot
     }

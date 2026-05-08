@@ -19,8 +19,18 @@ struct SnapshotListView: View {
         ColumnSpec(id: "fx",      title: "FX",       minWidth: 80,  defaultWidth: 120, alignment: .trailing),
         ColumnSpec(id: "total",   title: "Total",    minWidth: 100, defaultWidth: 150, alignment: .trailing),
         ColumnSpec(id: "status",  title: "Status",   minWidth: 130, defaultWidth: 170),
-        ColumnSpec(id: "actions", title: "",         minWidth: 90,  defaultWidth: 90,  alignment: .trailing, resizable: false),
+        ColumnSpec(id: "actions", title: "",         minWidth: 90,  defaultWidth: 90,  alignment: .trailing, resizable: false, sortable: false),
     ])
+
+    private var sortedSnapshots: [Snapshot] {
+        sizer.sorted(snapshots, comparators: [
+            "snap":   { $0.label.localizedCaseInsensitiveCompare($1.label) == .orderedAscending },
+            "date":   { $0.date < $1.date },
+            "fx":     { $0.usdToInrRate < $1.usdToInrRate },
+            "total":  { totalFor($0) < totalFor($1) },
+            "status": { ($0.isLocked ? 0 : 1) < ($1.isLocked ? 0 : 1) },
+        ])
+    }
 
     private func totalFor(_ s: Snapshot) -> Double {
         // Use pre-computed cache if available (snapshot is locked + cache populated),
@@ -70,9 +80,10 @@ struct SnapshotListView: View {
                 Panel {
                     VStack(spacing: 0) {
                         ResizableHeader(sizer: sizer)
-                        ForEach(Array(snapshots.enumerated()), id: \.element.id) { idx, s in
+                        let rows = sortedSnapshots
+                        ForEach(Array(rows.enumerated()), id: \.element.id) { idx, s in
                             row(idx: idx, s: s)
-                            if idx < snapshots.count - 1 {
+                            if idx < rows.count - 1 {
                                 Divider().overlay(Color.lLine)
                             }
                         }

@@ -237,6 +237,19 @@ struct SnapshotDiffView: View {
 
     // MARK: table
 
+    private var sortedRows: [Row] {
+        sizer.sorted(cachedRows, comparators: [
+            "account": { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending },
+            "owner":   { $0.person.localizedCaseInsensitiveCompare($1.person) == .orderedAscending },
+            "country": { $0.country < $1.country },
+            "type":    { $0.type.localizedCaseInsensitiveCompare($1.type) == .orderedAscending },
+            "from":    { $0.valA < $1.valA },
+            "to":      { $0.valB < $1.valB },
+            "dAbs":    { $0.diff < $1.diff },
+            "dPct":    { $0.pct < $1.pct },
+        ])
+    }
+
     private var tableSection: some View {
         VStack(spacing: 0) {
             PanelHead(title: "Account-level diff",
@@ -251,9 +264,10 @@ struct SnapshotDiffView: View {
             } else {
                 ScrollView(.vertical) {
                     LazyVStack(spacing: 0) {
-                        ForEach(Array(cachedRows.enumerated()), id: \.element.id) { idx, r in
+                        let rows = sortedRows
+                        ForEach(Array(rows.enumerated()), id: \.element.id) { idx, r in
                             row(r, idx: idx)
-                            if idx < cachedRows.count - 1 {
+                            if idx < rows.count - 1 {
                                 Divider().overlay(Color.lLine)
                             }
                         }

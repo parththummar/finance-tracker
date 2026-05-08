@@ -17,11 +17,18 @@ struct ReceivablesView: View {
         ColumnSpec(id: "ccy",      title: "Ccy",      minWidth: 50,  defaultWidth: 60,  alignment: .center),
         ColumnSpec(id: "latest",   title: "Latest",   minWidth: 100, defaultWidth: 140, alignment: .trailing),
         ColumnSpec(id: "status",   title: "Status",   minWidth: 70,  defaultWidth: 90,  alignment: .leading),
-        ColumnSpec(id: "actions",  title: "",         minWidth: 160, defaultWidth: 160, alignment: .trailing, resizable: false),
+        ColumnSpec(id: "actions",  title: "",         minWidth: 160, defaultWidth: 160, alignment: .trailing, resizable: false, sortable: false),
     ])
 
     private var visible: [Receivable] {
-        showInactive ? receivables : receivables.filter { $0.isActive }
+        let base = showInactive ? receivables : receivables.filter { $0.isActive }
+        return sizer.sorted(base, comparators: [
+            "name":   { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending },
+            "debtor": { $0.debtor.localizedCaseInsensitiveCompare($1.debtor) == .orderedAscending },
+            "ccy":    { $0.nativeCurrency.rawValue < $1.nativeCurrency.rawValue },
+            "latest": { (latestValue(for: $0) ?? -.infinity) < (latestValue(for: $1) ?? -.infinity) },
+            "status": { ($0.isActive ? 0 : 1) < ($1.isActive ? 0 : 1) },
+        ])
     }
 
     private func latestValue(for r: Receivable) -> Double? {

@@ -30,6 +30,7 @@ struct FinanceTrackerApp: App {
             let config = ModelConfiguration(schema: schema, url: storeURL)
             container = try ModelContainer(for: schema, configurations: [config])
             SeedData.seedIfEmpty(context: container.mainContext)
+            Self.backfillAccountSortIndex(context: container.mainContext)
         } catch {
             fatalError("Failed to create ModelContainer: \(error)")
         }
@@ -55,7 +56,10 @@ struct FinanceTrackerApp: App {
                     .onChange(of: app.theme) { _, newTheme in
                         applyWindowAppearance(newTheme)
                     }
-                    .onAppear { applyWindowAppearance(app.theme) }
+                    .onAppear {
+                        applyWindowAppearance(app.theme)
+                        if !lockGate.isLocked { lockGate.startIdleMonitorIfConfigured() }
+                    }
                     .blur(radius: lockGate.isLocked ? 18 : 0)
                     .allowsHitTesting(!lockGate.isLocked)
                 if lockGate.isLocked {
@@ -76,6 +80,18 @@ struct FinanceTrackerApp: App {
             SearchCommands()
             UndoDeleteCommands()
         }
+    }
+
+    /// Assign a stable sortIndex to existing accounts on first launch after the
+    /// field is introduced. Detected by all rows still being 0. Order seeded
+    /// by name so the user starts with a reasonable arrangement.
+    private static func backfillAccountSortIndex(context: ModelContext) {
+        guard let accounts = try? context.fetch(FetchDescriptor<Account>()),
+              !accounts.isEmpty,
+              accounts.allSatisfy({ $0.sortIndex == 0 }) else { return }
+        let sorted = accounts.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        for (i, a) in sorted.enumerated() { a.sortIndex = i + 1 }
+        try? context.save()
     }
 
     private func applyWindowAppearance(_ theme: AppTheme) {

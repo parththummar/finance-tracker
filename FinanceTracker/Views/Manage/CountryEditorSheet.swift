@@ -8,6 +8,8 @@ struct CountryEditorSheet: View {
     @Query(sort: \Country.code) private var allCountries: [Country]
     let existing: Country?
 
+    @AppStorage("displayCurrency") private var displayCurrencyRaw: String = Currency.USD.rawValue
+
     @State private var code: String = ""
     @State private var name: String = ""
     @State private var flag: String = ""
@@ -103,6 +105,7 @@ struct CountryEditorSheet: View {
         guard let c = existing else {
             let taken = allCountries.compactMap { $0.colorHex }
             color = Palette.unusedFallback(taken: taken)
+            if let cur = Currency(rawValue: displayCurrencyRaw) { defaultCurrency = cur }
             return
         }
         code = c.code; name = c.name; flag = c.flag; defaultCurrency = c.defaultCurrency

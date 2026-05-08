@@ -13,16 +13,22 @@ struct PeopleView: View {
     @State private var addingNew: Bool = false
     @FocusState private var focusedNewRow: Bool
     @StateObject private var sizer = ColumnSizer(tableID: "people", specs: [
-        ColumnSpec(id: "color",    title: "Color",    minWidth: 60,  defaultWidth: 70,  resizable: false),
+        ColumnSpec(id: "color",    title: "Color",    minWidth: 60,  defaultWidth: 70,  resizable: false, sortable: false),
         ColumnSpec(id: "name",     title: "Name",     minWidth: 160, defaultWidth: 280, flex: true),
         ColumnSpec(id: "include",  title: "In NW",    minWidth: 70,  defaultWidth: 80,  resizable: false),
         ColumnSpec(id: "active",   title: "Active",   minWidth: 70,  defaultWidth: 80,  resizable: false),
         ColumnSpec(id: "accounts", title: "Accounts", minWidth: 80,  defaultWidth: 100, alignment: .trailing),
-        ColumnSpec(id: "actions",  title: "",         minWidth: 60,  defaultWidth: 60,  alignment: .trailing, resizable: false),
+        ColumnSpec(id: "actions",  title: "",         minWidth: 60,  defaultWidth: 60,  alignment: .trailing, resizable: false, sortable: false),
     ])
 
     private var visible: [Person] {
-        showInactive ? people : people.filter(\.isActive)
+        let base = showInactive ? people : people.filter(\.isActive)
+        return sizer.sorted(base, comparators: [
+            "name":     { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending },
+            "include":  { ($0.includeInNetWorth ? 0 : 1) < ($1.includeInNetWorth ? 0 : 1) },
+            "active":   { ($0.isActive ? 0 : 1) < ($1.isActive ? 0 : 1) },
+            "accounts": { $0.accounts.count < $1.accounts.count },
+        ])
     }
 
     var body: some View {

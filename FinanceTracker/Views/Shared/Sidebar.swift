@@ -1,8 +1,22 @@
 import SwiftUI
+import SwiftData
 import Combine
 
 struct Sidebar: View {
     @EnvironmentObject var app: AppState
+    @Query private var liveAccounts: [Account]
+    @Query private var liveSnapshots: [Snapshot]
+    @Query private var livePeople: [Person]
+    @Query private var liveCountries: [Country]
+
+    private var liveIDs: Set<UUID> {
+        var s = Set<UUID>()
+        liveAccounts.forEach  { s.insert($0.id) }
+        liveSnapshots.forEach { s.insert($0.id) }
+        livePeople.forEach    { s.insert($0.id) }
+        liveCountries.forEach { s.insert($0.id) }
+        return s
+    }
 
     /// Below this width → icon-only mode with hover tooltips.
     static let collapseThreshold: CGFloat = 140
@@ -213,8 +227,11 @@ struct Sidebar: View {
                 .padding(.horizontal, 18)
                 .padding(.bottom, 4)
 
+                let alive = liveIDs
                 ForEach(recents) { item in
+                    let isDeleted = !alive.contains(item.entityID)
                     Button {
+                        guard !isDeleted else { return }
                         switch item.kind {
                         case .account:
                             app.pendingFocusAccountID = item.entityID
@@ -233,11 +250,12 @@ struct Sidebar: View {
                         HStack(spacing: 8) {
                             Image(systemName: iconFor(item.kind))
                                 .font(.system(size: 10))
-                                .foregroundStyle(Color.lInk3)
+                                .foregroundStyle(isDeleted ? Color.lInk4 : Color.lInk3)
                                 .frame(width: 14)
                             Text(item.label)
                                 .font(Typo.sans(11.5))
-                                .foregroundStyle(Color.lInk2)
+                                .foregroundStyle(isDeleted ? Color.lInk4 : Color.lInk2)
+                                .strikethrough(isDeleted, color: Color.lInk4)
                                 .lineLimit(1)
                             Spacer(minLength: 0)
                         }
@@ -246,7 +264,9 @@ struct Sidebar: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .pointerStyle(.link)
+                    .pointerStyle(isDeleted ? .default : .link)
+                    .disabled(isDeleted)
+                    .help(isDeleted ? "Deleted — restore via Edit ▸ Recently Deleted" : "")
                 }
             }
             .padding(.bottom, 10)

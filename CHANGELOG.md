@@ -9,6 +9,26 @@ Version headings match **semver** derived from **`git log`** (newest-first). Xco
 
 ---
 
+## [2.5.0] (2) - 2026-05-09
+
+### Added
+
+- **Accounts CSV import** — re-import the Accounts list export back into the store; format is auto-detected against the Full history CSV.
+- **Auto-lock when idle** — re-engage the App Lock after no in-app activity. Picker in Settings → Security: Off / 1 / 5 / 15 / 30 / 60 min.
+- **Sortable column headers** — every grid (Accounts, People, Countries, Asset Types, Receivables, Snapshots, Diff, Breakdown, Trends). Click cycles ASC → DESC → unsorted with an arrow indicator; preference persists per-table.
+- **Watchlist on Dashboard** — pin accounts from the Accounts grid (star icon) to a dashboard panel showing current value and delta vs prior snapshot. Click a row to focus the account.
+- **Drag-reorder accounts** — grip handle on each Accounts row; custom ordering persists across launches and is the default sort.
+
+### Changed
+
+- **CSV import upserts accounts** — re-importing the Accounts list now updates currency, institution, notes, active flag, cost basis, and asset type on existing rows instead of skipping duplicates. Summary reports updated vs unchanged counts.
+- **New entry forms default to display currency** — New Account, New Receivable, and New Country preselect the user's chosen display currency instead of always USD.
+- **Deleted items in sidebar Recent** are now struck through and disabled; clicks no longer silently no-op.
+- **Recent list trimmed** from 6 entries to 5.
+- **Friendlier import error** when the supplied CSV matches neither Full history nor Accounts list format.
+
+---
+
 ## [2.5.0] (1) - 2026-05-08
 
 ### Added

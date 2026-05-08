@@ -15,6 +15,7 @@ struct AccountsView: View {
     @State private var confirmDelete: Account?
     @State private var cachedTrends: [UUID: [Double]] = [:]
     @StateObject private var sizer = ColumnSizer(tableID: "accounts", specs: [
+        ColumnSpec(id: "drag",    title: "",        minWidth: 24,  defaultWidth: 28,  resizable: false, sortable: false),
         ColumnSpec(id: "name",    title: "Name",    minWidth: 140, defaultWidth: 240, flex: true),
         ColumnSpec(id: "person",  title: "Person",  minWidth: 90,  defaultWidth: 130),
         ColumnSpec(id: "country", title: "Country", minWidth: 70,  defaultWidth: 100),
@@ -23,11 +24,36 @@ struct AccountsView: View {
         ColumnSpec(id: "trend",   title: "12mo",    minWidth: 70,  defaultWidth: 90),
         ColumnSpec(id: "unreal",  title: "Unrealized", minWidth: 100, defaultWidth: 130, alignment: .trailing),
         ColumnSpec(id: "status",  title: "Status",  minWidth: 70,  defaultWidth: 100),
-        ColumnSpec(id: "actions", title: "",        minWidth: 140, defaultWidth: 140, alignment: .trailing, resizable: false),
+        ColumnSpec(id: "actions", title: "",        minWidth: 170, defaultWidth: 170, alignment: .trailing, resizable: false, sortable: false),
     ])
 
     private var visible: [Account] {
-        showInactive ? accounts : accounts.filter(\.isActive)
+        let filtered = showInactive ? accounts : accounts.filter(\.isActive)
+        // Default ordering: user-defined sortIndex, then name as tiebreaker.
+        let base = filtered.sorted {
+            if $0.sortIndex != $1.sortIndex { return $0.sortIndex < $1.sortIndex }
+            return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+        }
+        return sizer.sorted(base, comparators: [
+            "name":    { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending },
+            "person":  { ($0.person?.name ?? "").localizedCaseInsensitiveCompare($1.person?.name ?? "") == .orderedAscending },
+            "country": { ($0.country?.code ?? "") < ($1.country?.code ?? "") },
+            "type":    { ($0.assetType?.name ?? "").localizedCaseInsensitiveCompare($1.assetType?.name ?? "") == .orderedAscending },
+            "ccy":     { $0.nativeCurrency.rawValue < $1.nativeCurrency.rawValue },
+            "trend":   { trendGrowth($0) < trendGrowth($1) },
+            "unreal":  { unrealizedGain($0) < unrealizedGain($1) },
+            "status":  { ($0.isActive ? 0 : 1) < ($1.isActive ? 0 : 1) },
+        ])
+    }
+
+    private func trendGrowth(_ a: Account) -> Double {
+        guard let series = cachedTrends[a.id], let first = series.first, let last = series.last, first != 0 else { return 0 }
+        return (last - first) / abs(first)
+    }
+
+    private func unrealizedGain(_ a: Account) -> Double {
+        guard a.costBasis > 0, let cur = latestNativeValue(a) else { return -.infinity }
+        return cur - a.costBasis
     }
 
     var body: some View {
@@ -197,7 +223,11 @@ struct AccountsView: View {
     }
 
     private func row(_ a: Account, idx: Int) -> some View {
-        HStack(spacing: 0) {
+        let canDrag = sizer.sortColumnID == nil
+        return HStack(spacing: 0) {
+            ResizableCell(sizer: sizer, colID: "drag") {
+                dragHandle(for: a, enabled: canDrag)
+            }
             ResizableCell(sizer: sizer, colID: "name") {
                 HStack(spacing: 6) {
                     Text(a.name)
@@ -286,6 +316,16 @@ struct AccountsView: View {
             }
             ResizableCell(sizer: sizer, colID: "actions") {
                 HStack(spacing: 6) {
+                    Button {
+                        app.togglePinnedAccount(a.id)
+                    } label: {
+                        Image(systemName: app.isPinnedAccount(a.id) ? "star.fill" : "star")
+                            .font(.system(size: 11))
+                            .foregroundStyle(app.isPinnedAccount(a.id) ? Color.lGain : Color.lInk3)
+                    }
+                    .buttonStyle(.plain)
+                    .pointerStyle(.link)
+                    .help(app.isPinnedAccount(a.id) ? "Unpin from dashboard watchlist" : "Pin to dashboard watchlist")
                     GhostButton(action: { detailing = a }) {
                         Image(systemName: "rectangle.and.text.magnifyingglass")
                             .font(.system(size: 10, weight: .bold))
@@ -318,6 +358,44 @@ struct AccountsView: View {
         }
         .padding(.horizontal, 18).padding(.vertical, 10)
         .background(idx.isMultiple(of: 2) ? Color.clear : Color.lSunken.opacity(0.5))
+        .dropDestination(for: String.self) { items, _ in
+            handleDrop(items, before: a)
+            return true
+        }
         .rowClickable { editing = a }
+    }
+
+    @ViewBuilder
+    private func dragHandle(for a: Account, enabled: Bool) -> some View {
+        let img = Image(systemName: "line.3.horizontal")
+            .font(.system(size: 11, weight: .medium))
+            .foregroundStyle(enabled ? Color.lInk3 : Color.lInk4.opacity(0.4))
+            .frame(maxWidth: .infinity, alignment: .center)
+            .contentShape(Rectangle())
+            .help(enabled ? "Drag to reorder" : "Clear column sort to enable drag-reorder")
+        if enabled {
+            img.draggable(a.id.uuidString)
+        } else {
+            img
+        }
+    }
+
+    private func handleDrop(_ items: [String], before target: Account) {
+        guard let idStr = items.first,
+              let draggedID = UUID(uuidString: idStr),
+              draggedID != target.id,
+              let dragged = accounts.first(where: { $0.id == draggedID }) else { return }
+        var ordered = accounts.sorted { lhs, rhs in
+            if lhs.sortIndex != rhs.sortIndex { return lhs.sortIndex < rhs.sortIndex }
+            return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+        }
+        ordered.removeAll { $0.id == draggedID }
+        if let idx = ordered.firstIndex(where: { $0.id == target.id }) {
+            ordered.insert(dragged, at: idx)
+        } else {
+            ordered.append(dragged)
+        }
+        for (i, acc) in ordered.enumerated() { acc.sortIndex = i + 1 }
+        try? context.save()
     }
 }

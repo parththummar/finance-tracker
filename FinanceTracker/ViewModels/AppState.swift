@@ -47,6 +47,9 @@ final class AppState: ObservableObject {
     }
     @AppStorage("compactMode") var compactMode: Bool = false
     @AppStorage("requireAppLock") var requireAppLock: Bool = true
+    /// Minutes of in-app idle (no key/mouse) before the lock gate re-engages.
+    /// 0 disables auto-lock. Only effective while `requireAppLock` is on.
+    @AppStorage("autoLockIdleMinutes") var autoLockIdleMinutes: Int = 0
     @AppStorage("stealthMode") var stealthMode: Bool = false
     @AppStorage("sidebarWidth") var sidebarWidth: Double = 220
     @AppStorage("sidebarLastExpandedWidth") var sidebarLastExpandedWidth: Double = 220
@@ -55,6 +58,29 @@ final class AppState: ObservableObject {
     @AppStorage("menuBarEnabled") var menuBarEnabled: Bool = false
     /// Recent items stack: pipe-separated entries "kind|uuid|label". Newest first.
     @AppStorage("recentItems") var recentItemsRaw: String = ""
+
+    /// Comma-separated UUIDs for accounts pinned to the dashboard watchlist.
+    /// Order is preserved (insertion order = display order on dashboard).
+    @AppStorage("pinnedAccountIDs") var pinnedAccountIDsRaw: String = ""
+
+    var pinnedAccountIDs: [UUID] {
+        pinnedAccountIDsRaw.split(separator: ",").compactMap { UUID(uuidString: String($0)) }
+    }
+
+    func isPinnedAccount(_ id: UUID) -> Bool {
+        pinnedAccountIDs.contains(id)
+    }
+
+    func togglePinnedAccount(_ id: UUID) {
+        var list = pinnedAccountIDs
+        if let idx = list.firstIndex(of: id) {
+            list.remove(at: idx)
+        } else {
+            list.append(id)
+        }
+        pinnedAccountIDsRaw = list.map(\.uuidString).joined(separator: ",")
+        objectWillChange.send()
+    }
 
     enum RecentKind: String { case account, snapshot, person, country }
 
@@ -82,7 +108,7 @@ final class AppState: ObservableObject {
         var list = recentItems
         list.removeAll { $0.kind == kind && $0.entityID == id }
         list.insert(RecentItem(kind: kind, entityID: id, label: label), at: 0)
-        if list.count > 6 { list = Array(list.prefix(6)) }
+        if list.count > 5 { list = Array(list.prefix(5)) }
         recentItemsRaw = list.map { "\($0.kind.rawValue)|\($0.entityID.uuidString)|\($0.label)" }
             .joined(separator: "\n")
         objectWillChange.send()

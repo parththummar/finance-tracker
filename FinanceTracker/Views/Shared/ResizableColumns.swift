@@ -10,6 +10,9 @@ struct ColumnSpec: Identifiable, Hashable {
     var alignment: TextAlignment = .leading
     var flex: Bool = false
     var resizable: Bool = true
+    /// When true, header is clickable and cycles ASC → DESC → unsorted. The
+    /// owning view supplies the actual comparator via `ColumnSizer.sorted(_:comparators:)`.
+    var sortable: Bool = true
 }
 
 final class ColumnSizer: ObservableObject {
@@ -18,12 +21,27 @@ final class ColumnSizer: ObservableObject {
     @Published private(set) var widths: [String: CGFloat] = [:]
     @Published private(set) var titleOverrides: [String: String] = [:]
 
+    /// Active sort column. `nil` means use the view's default ordering (whatever
+    /// the underlying `@Query` or computed list yields).
+    @Published private(set) var sortColumnID: String?
+    @Published private(set) var sortAscending: Bool = true
+
     init(tableID: String, specs: [ColumnSpec]) {
         self.tableID = tableID
         self.specs = specs
         for s in specs {
             let stored = UserDefaults.standard.double(forKey: Self.key(tableID, s.id))
             widths[s.id] = stored > 0 ? max(stored, s.minWidth) : s.defaultWidth
+        }
+        // Restore persisted sort state.
+        if let raw = UserDefaults.standard.string(forKey: Self.sortKey(tableID)) {
+            // Format: "<colID>|asc" or "<colID>|desc". Empty / missing = no sort.
+            let parts = raw.split(separator: "|", maxSplits: 1).map(String.init)
+            if parts.count == 2,
+               specs.contains(where: { $0.id == parts[0] && $0.sortable }) {
+                sortColumnID = parts[0]
+                sortAscending = parts[1] == "asc"
+            }
         }
     }
 
@@ -37,6 +55,10 @@ final class ColumnSizer: ObservableObject {
 
     private static func key(_ tableID: String, _ colID: String) -> String {
         "col.\(tableID).\(colID)"
+    }
+
+    private static func sortKey(_ tableID: String) -> String {
+        "sort.\(tableID)"
     }
 
     func width(_ id: String) -> CGFloat {
@@ -55,6 +77,44 @@ final class ColumnSizer: ObservableObject {
             widths[s.id] = s.defaultWidth
             UserDefaults.standard.removeObject(forKey: Self.key(tableID, s.id))
         }
+    }
+
+    // MARK: - Sort
+
+    /// Cycle: not-active → ASC, ASC → DESC, DESC → unsorted (default).
+    func cycleSort(_ id: String) {
+        if sortColumnID == id {
+            if sortAscending {
+                sortAscending = false
+            } else {
+                sortColumnID = nil
+                sortAscending = true
+            }
+        } else {
+            sortColumnID = id
+            sortAscending = true
+        }
+        persistSort()
+    }
+
+    private func persistSort() {
+        let key = Self.sortKey(tableID)
+        if let id = sortColumnID {
+            UserDefaults.standard.set("\(id)|\(sortAscending ? "asc" : "desc")", forKey: key)
+        } else {
+            UserDefaults.standard.removeObject(forKey: key)
+        }
+    }
+
+    /// Apply the active sort to `items` using a comparator keyed by column id.
+    /// The comparator returns true when `lhs` should come before `rhs` in
+    /// **ascending** order. DESC simply reverses the result. If no sort is
+    /// active or no comparator is provided for the active column, returns the
+    /// input unchanged.
+    func sorted<T>(_ items: [T], comparators: [String: (T, T) -> Bool]) -> [T] {
+        guard let id = sortColumnID, let cmp = comparators[id] else { return items }
+        let asc = items.sorted(by: cmp)
+        return sortAscending ? asc : asc.reversed()
     }
 }
 
@@ -75,13 +135,7 @@ struct ResizableHeader: View {
         HStack(spacing: 0) {
             ForEach(Array(sizer.specs.enumerated()), id: \.element.id) { idx, spec in
                 ZStack(alignment: .trailing) {
-                    Text(sizer.title(for: spec.id))
-                        .font(Typo.eyebrow).tracking(1.2)
-                        .foregroundStyle(Color.lInk3)
-                        .frame(maxWidth: .infinity,
-                               alignment: ColAlignment.swiftUI(spec.alignment))
-                        .lineLimit(1)
-                        .padding(.horizontal, 8)
+                    headerLabel(spec)
                     if spec.resizable && idx < sizer.specs.count - 1 {
                         ResizeHandle(sizer: sizer, colID: spec.id)
                     }
@@ -93,6 +147,46 @@ struct ResizableHeader: View {
         .fixedSize(horizontal: false, vertical: true)
         .background(Color.lSunken)
         .overlay(Rectangle().frame(height: 1).foregroundStyle(Color.lLine), alignment: .bottom)
+    }
+
+    @ViewBuilder
+    private func headerLabel(_ spec: ColumnSpec) -> some View {
+        let isSorted = sizer.sortColumnID == spec.id
+        let titleText = sizer.title(for: spec.id)
+        if spec.sortable && !titleText.isEmpty {
+            Button {
+                sizer.cycleSort(spec.id)
+            } label: {
+                HStack(spacing: 4) {
+                    if spec.alignment == .trailing { Spacer(minLength: 0) }
+                    Text(titleText)
+                        .font(Typo.eyebrow).tracking(1.2)
+                        .foregroundStyle(isSorted ? Color.lInk : Color.lInk3)
+                        .lineLimit(1)
+                    if isSorted {
+                        Image(systemName: sizer.sortAscending ? "arrowtriangle.up.fill" : "arrowtriangle.down.fill")
+                            .font(.system(size: 7, weight: .bold))
+                            .foregroundStyle(Color.lInk)
+                    }
+                    if spec.alignment != .trailing { Spacer(minLength: 0) }
+                }
+                .frame(maxWidth: .infinity,
+                       alignment: ColAlignment.swiftUI(spec.alignment))
+                .padding(.horizontal, 8)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .pointerStyle(.link)
+            .help("Sort by \(titleText)")
+        } else {
+            Text(titleText)
+                .font(Typo.eyebrow).tracking(1.2)
+                .foregroundStyle(Color.lInk3)
+                .frame(maxWidth: .infinity,
+                       alignment: ColAlignment.swiftUI(spec.alignment))
+                .lineLimit(1)
+                .padding(.horizontal, 8)
+        }
     }
 }
 

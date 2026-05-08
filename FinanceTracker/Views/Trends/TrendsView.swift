@@ -688,18 +688,49 @@ struct TrendsView: View {
 
     // MARK: table
 
+    private struct TrendRow: Identifiable {
+        let id: UUID
+        let label: String
+        let date: Date
+        let total: Double
+        let hasPrev: Bool
+        let diff: Double
+        let pct: Double
+    }
+
+    private var trendRows: [TrendRow] {
+        let chrono = Array(cachedSnapshotTotals.reversed())
+        return chrono.enumerated().map { idx, r in
+            let prev: SnapshotTotal? = chrono.dropFirst(idx + 1).first
+            let diff = prev.map { r.total - $0.total } ?? 0
+            let pct: Double = {
+                guard let p = prev, p.total != 0 else { return 0 }
+                return (r.total - p.total) / abs(p.total) * 100
+            }()
+            return TrendRow(id: r.id, label: r.label, date: r.date, total: r.total,
+                            hasPrev: prev != nil, diff: diff, pct: pct)
+        }
+    }
+
+    private var sortedTrendRows: [TrendRow] {
+        sizer.sorted(trendRows, comparators: [
+            "snap":  { $0.label.localizedCaseInsensitiveCompare($1.label) == .orderedAscending },
+            "date":  { $0.date < $1.date },
+            "val":   { $0.total < $1.total },
+            "dAbs":  { $0.diff < $1.diff },
+            "dPct":  { $0.pct < $1.pct },
+        ])
+    }
+
     private var tableSection: some View {
         VStack(spacing: 0) {
             PanelHead(title: "Snapshots", meta: "\(cachedSnapshotTotals.count) in range")
             ResizableHeader(sizer: sizer)
-            let rows = Array(cachedSnapshotTotals.reversed())
+            let rows = sortedTrendRows
             ForEach(Array(rows.enumerated()), id: \.element.id) { idx, r in
-                let prev: SnapshotTotal? = rows.dropFirst(idx + 1).first
-                let diff = (prev.map { r.total - $0.total }) ?? 0
-                let pct: Double = {
-                    guard let p = prev, p.total != 0 else { return 0 }
-                    return (r.total - p.total) / abs(p.total) * 100
-                }()
+                let diff = r.diff
+                let pct = r.pct
+                let hasPrev = r.hasPrev
                 HStack(spacing: 0) {
                     ResizableCell(sizer: sizer, colID: "snap") {
                         Text(r.label)
@@ -719,15 +750,15 @@ struct TrendsView: View {
                             .lineLimit(1)
                     }
                     ResizableCell(sizer: sizer, colID: "dAbs") {
-                        Text(prev != nil ? Fmt.signedDelta(diff, app.displayCurrency) : "—")
+                        Text(hasPrev ? Fmt.signedDelta(diff, app.displayCurrency) : "—")
                             .font(Typo.mono(11, weight: .medium))
-                            .foregroundStyle(prev != nil ? Palette.deltaColor(diff) : Color.lInk4)
+                            .foregroundStyle(hasPrev ? Palette.deltaColor(diff) : Color.lInk4)
                             .lineLimit(1)
                     }
                     ResizableCell(sizer: sizer, colID: "dPct") {
-                        Text(prev != nil ? "\(pct >= 0 ? "+" : "−")\(String(format: "%.1f", abs(pct)))%" : "—")
+                        Text(hasPrev ? "\(pct >= 0 ? "+" : "−")\(String(format: "%.1f", abs(pct)))%" : "—")
                             .font(Typo.mono(11))
-                            .foregroundStyle(prev != nil ? Palette.deltaColor(diff) : Color.lInk4)
+                            .foregroundStyle(hasPrev ? Palette.deltaColor(diff) : Color.lInk4)
                             .lineLimit(1)
                     }
                 }
