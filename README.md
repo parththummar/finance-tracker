@@ -16,7 +16,7 @@ Supports multiple people, countries, and currencies (notably **USD** and **INR**
 | **Snapshots** | List, create, lock/unlock, edit per-account values with live totals and deltas; **completeness badge**, **pinned snapshot tabs**, missing-row highlights, stale-account flag |
 | **Diff** (`⌘⇧D`) | Snapshot diff between two dates, with **Money Flow** Sankey visual of where value moved per account |
 | **Reports** | Period compare, **QoQ heatmap** (quarters × categories), CAGR & monthly drift, asset-type drilldown |
-| **Manage** | Inline-edit grids for **people** (name, color, "In NW" toggle, quick-add row), countries, asset types, **accounts** (with optional cost basis + Unrealized column, **drag-reorder**, **pin to watchlist**), and **receivables** (money owed to you, with start dates) |
+| **Manage** | Inline-edit grids for **people** (name, color, "In NW" toggle, quick-add row), countries, asset types, **accounts** (optional cost basis + Unrealized column, **drag-reorder**, **pin to watchlist**, **multi-select with Bulk Edit and Account Merge**), and **receivables** (money owed to you, with start dates) |
 | **Grids** | **Sortable column headers** on every grid (ASC → DESC → unsorted, persisted), resizable columns |
 | **Import / Export** | CSV export of full history, accounts list, snapshot totals, receivables; **auto-detecting CSV import** that handles both Full history and Accounts list (creates or updates existing accounts) |
 | **Settings** | Display, **App icon** picker (Ledgerly · Classic · Vault · Strata), **Dashboard widgets** show/hide/reorder, category colors, FX, backups, reminders, **Security** (App lock + **Auto-lock when idle** + Stealth mode + Menu bar item) |
