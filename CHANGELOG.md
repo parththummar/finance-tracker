@@ -9,6 +9,41 @@ Version headings match **semver** derived from **`git log`** (newest-first). Xco
 
 ---
 
+## [2.5.0] (5) - 2026-05-08
+
+### Added
+
+- **Account merge** — combine two accounts into one. Use it when a broker is renamed or duplicates appear; history is preserved on the surviving account, with overlapping snapshot values summed and cost basis combined.
+- **Bulk edit accounts** — select multiple accounts and update person, country, asset type, status (Active / Retired), or group label in a single action. Each field is opt-in, so untoggled fields stay untouched.
+- **Multi-select mode in All Assets** — a "Select" toggle reveals row checkboxes plus an action bar with Select all / Clear, and triggers for Bulk Edit and Merge.
+
+### Changed
+
+- **All Assets row highlight** — selected rows are visually emphasized while in selection mode.
+- **Merge preview** — the merge sheet shows moved snapshots, overlap behavior, and the combined cost basis before confirmation. A currency-mismatch guard blocks merges across different native currencies to avoid silent FX conversion of stored values.
+
+---
+
+## [2.5.0] (4) - 2026-05-09
+
+### Added
+
+- **Accounts CSV import** — re-import the Accounts list export back into the store. Format is auto-detected against the Full history CSV.
+- **Auto-lock when idle** — re-engage the App Lock after a configurable period of in-app inactivity. Picker in Settings → Security: Off / 1 / 5 / 15 / 30 / 60 min.
+- **Sortable column headers** — every grid (Accounts, People, Countries, Asset Types, Receivables, Snapshots, Diff, Breakdown, Trends). Click cycles ASC → DESC → unsorted with an arrow indicator; preference persists per-table.
+- **Watchlist on Dashboard** — pin accounts from the Accounts grid (star icon) to a dashboard panel showing current value and delta vs prior snapshot. Click a row to focus the account.
+- **Drag-reorder accounts** — grip handle on each Accounts row; custom ordering persists across launches and is the default sort.
+
+### Changed
+
+- **CSV import upserts accounts** — re-importing the Accounts list now updates currency, institution, notes, active flag, cost basis, and asset type on existing rows instead of skipping duplicates. Summary reports updated vs unchanged counts.
+- **New entry forms default to display currency** — New Account, New Receivable, and New Country preselect the user's chosen display currency instead of always USD.
+- **Deleted items in sidebar Recent** are now struck through and disabled; clicks no longer silently no-op.
+- **Recent list trimmed** from 6 entries to 5.
+- **Friendlier import error** when the supplied CSV matches neither Full history nor Accounts list format.
+
+---
+
 ## [2.5.0] (1) - 2026-05-08
 
 ### Added
