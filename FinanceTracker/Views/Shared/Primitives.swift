@@ -132,6 +132,7 @@ struct EditorialEmpty: View {
     let cta: (() -> Void)?
     let secondaryLabel: String?
     let secondary: (() -> Void)?
+    let illustration: String
 
     init(eyebrow: String,
          title: String,
@@ -141,7 +142,8 @@ struct EditorialEmpty: View {
          ctaLabel: String? = nil,
          cta: (() -> Void)? = nil,
          secondaryLabel: String? = nil,
-         secondary: (() -> Void)? = nil) {
+         secondary: (() -> Void)? = nil,
+         illustration: String = "tray") {
         self.eyebrow = eyebrow
         self.title = title
         self.titleItalic = titleItalic
@@ -151,6 +153,7 @@ struct EditorialEmpty: View {
         self.cta = cta
         self.secondaryLabel = secondaryLabel
         self.secondary = secondary
+        self.illustration = illustration
     }
 
     var body: some View {
@@ -198,10 +201,19 @@ struct EditorialEmpty: View {
                     .padding(.top, 6)
                 }
                 Spacer(minLength: 0)
-                Text("—")
-                    .font(.custom(Typo.serif, size: 64))
-                    .foregroundStyle(Color.lInk3.opacity(0.35))
-                    .padding(.trailing, 4)
+                ZStack {
+                    Circle()
+                        .fill(Color.lSunken.opacity(0.6))
+                        .frame(width: 132, height: 132)
+                    Circle()
+                        .stroke(Color.lLine, lineWidth: 1)
+                        .frame(width: 132, height: 132)
+                    Image(systemName: illustration)
+                        .font(.system(size: 50, weight: .light))
+                        .foregroundStyle(Color.lInk3.opacity(0.7))
+                }
+                .padding(.trailing, 8)
+                .padding(.top, 4)
             }
             .padding(.horizontal, 28)
             .padding(.vertical, 26)
@@ -292,6 +304,7 @@ struct KPICard: View {
                 .font(Typo.serifNum(34))
                 .foregroundStyle(valueColor)
                 .monospacedDigit()
+                .stealthAmount()
             if let sub {
                 HStack(spacing: 4) {
                     Text(sub)
@@ -303,6 +316,7 @@ struct KPICard: View {
                             .foregroundStyle(deltaUp ? Color.lGain : Color.lLoss)
                     }
                 }
+                .stealthAmount()
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -341,6 +355,7 @@ struct AllocRow: View {
                     .font(Typo.sans(13, weight: .semibold))
                     .foregroundStyle(valueColor)
                     .monospacedDigit()
+                    .stealthAmount()
                 Text("\(pct, specifier: "%.1f")%")
                     .font(Typo.sans(12))
                     .foregroundStyle(Color.lInk3)

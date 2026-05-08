@@ -35,7 +35,7 @@ enum SnapshotPDFExporter {
 
         let panel = NSSavePanel()
         panel.title = "Export Snapshot PDF"
-        panel.nameFieldStringValue = "FinanceTracker-snapshot-\(safe(snapshot.label))-\(datestamp()).pdf"
+        panel.nameFieldStringValue = "Ledgerly-snapshot-\(safe(snapshot.label))-\(datestamp()).pdf"
         panel.allowedContentTypes = [.pdf]
         guard panel.runModal() == .OK, let dest = panel.url else { return .cancelled }
 

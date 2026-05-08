@@ -7,6 +7,11 @@ struct AccountDetailSheet: View {
     @EnvironmentObject var app: AppState
     @Query(sort: \Snapshot.date, order: .forward) private var snapshots: [Snapshot]
     let account: Account
+
+    private var seriesColor: Color {
+        if let cat = account.assetType?.category { return Palette.color(for: cat) }
+        return Color.lInk
+    }
     @State private var editing: Account?
 
     private struct Point: Identifiable {
@@ -198,15 +203,15 @@ struct AccountDetailSheet: View {
                         Chart {
                             ForEach(series) { p in
                                 AreaMark(x: .value("Date", p.date), y: .value("Value", p.display))
-                                    .foregroundStyle(.linearGradient(colors: [Color.lInk.opacity(0.18), Color.lInk.opacity(0.02)],
+                                    .foregroundStyle(.linearGradient(colors: [seriesColor.opacity(0.25), seriesColor.opacity(0.02)],
                                                                      startPoint: .top, endPoint: .bottom))
                                     .interpolationMethod(.monotone)
                                 LineMark(x: .value("Date", p.date), y: .value("Value", p.display))
-                                    .foregroundStyle(Color.lInk)
+                                    .foregroundStyle(seriesColor)
                                     .lineStyle(StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
                                     .interpolationMethod(.monotone)
                                 PointMark(x: .value("Date", p.date), y: .value("Value", p.display))
-                                    .foregroundStyle(Color.lInk)
+                                    .foregroundStyle(seriesColor)
                                     .symbolSize(28)
                             }
                         }

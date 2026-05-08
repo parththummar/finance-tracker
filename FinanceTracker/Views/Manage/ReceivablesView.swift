@@ -40,7 +40,8 @@ struct ReceivablesView: View {
                     body: "Track money you're owed but haven't received — loans to friends, unpaid invoices, expected reimbursements. Values stay outside net worth and can be updated each snapshot as partial or full receipt happens.",
                     detail: "Set the value to zero once received. The record stays for history.",
                     ctaLabel: "New Receivable",
-                    cta: { creatingNew = true }
+                    cta: { creatingNew = true },
+                    illustration: "hourglass"
                 )
             } else {
                 tablePanel
@@ -56,6 +57,7 @@ struct ReceivablesView: View {
                 if let r = confirmDelete { context.delete(r); try? context.save() }
                 confirmDelete = nil
             }
+            .keyboardShortcut(.defaultAction)
             Button("Cancel", role: .cancel) { confirmDelete = nil }
         } message: {
             Text("Receivable and all \(confirmDelete?.values.count ?? 0) historical values will be deleted. Cannot be undone.")

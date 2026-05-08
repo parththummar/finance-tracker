@@ -82,6 +82,7 @@ struct ReceivableEditorSheet: View {
         .onAppear(perform: prefill)
         .confirmationDialog("Save changes before closing?", isPresented: $showUnsavedConfirm) {
             Button("Save") { save() }
+                .keyboardShortcut(.defaultAction)
             Button("Discard", role: .destructive) { dismiss() }
             Button("Cancel", role: .cancel) {}
         }

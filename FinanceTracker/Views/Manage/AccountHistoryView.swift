@@ -5,6 +5,17 @@ struct AccountHistoryView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var app: AppState
     let account: Account
+
+    private var seriesColor: Color {
+        if let cat = account.assetType?.category { return Palette.color(for: cat) }
+        return Color.lInk
+    }
+
+    @State private var hoveredPoint: Point?
+
+    private func nearestPoint(to date: Date) -> Point? {
+        points.min { abs($0.date.timeIntervalSince(date)) < abs($1.date.timeIntervalSince(date)) }
+    }
     @State private var showInNative: Bool = true
     @State private var points: [Point] = []
     @State private var loaded: Bool = false
@@ -178,29 +189,74 @@ struct AccountHistoryView: View {
     private var chartSection: some View {
         VStack(spacing: 0) {
             PanelHead(title: "Value over time", meta: "\(points.count) snapshots")
-            Chart(points) { p in
-                AreaMark(
-                    x: .value("Date", p.date),
-                    y: .value("Value", showInNative ? p.native : p.display)
-                )
-                .interpolationMethod(.catmullRom)
-                .foregroundStyle(.linearGradient(
-                    colors: [Color.lInk.opacity(0.14), Color.lInk.opacity(0.01)],
-                    startPoint: .top, endPoint: .bottom
-                ))
-                LineMark(
-                    x: .value("Date", p.date),
-                    y: .value("Value", showInNative ? p.native : p.display)
-                )
-                .interpolationMethod(.catmullRom)
-                .foregroundStyle(Color.lInk)
-                .lineStyle(StrokeStyle(lineWidth: 1.8, lineCap: .round, lineJoin: .round))
-                PointMark(
-                    x: .value("Date", p.date),
-                    y: .value("Value", showInNative ? p.native : p.display)
-                )
-                .foregroundStyle(Color.lInk)
-                .symbolSize(24)
+            Chart {
+                ForEach(points) { p in
+                    AreaMark(
+                        x: .value("Date", p.date),
+                        y: .value("Value", showInNative ? p.native : p.display)
+                    )
+                    .interpolationMethod(.catmullRom)
+                    .foregroundStyle(.linearGradient(
+                        colors: [seriesColor.opacity(0.22), seriesColor.opacity(0.02)],
+                        startPoint: .top, endPoint: .bottom
+                    ))
+                    LineMark(
+                        x: .value("Date", p.date),
+                        y: .value("Value", showInNative ? p.native : p.display)
+                    )
+                    .interpolationMethod(.catmullRom)
+                    .foregroundStyle(seriesColor)
+                    .lineStyle(StrokeStyle(lineWidth: 1.8, lineCap: .round, lineJoin: .round))
+                    PointMark(
+                        x: .value("Date", p.date),
+                        y: .value("Value", showInNative ? p.native : p.display)
+                    )
+                    .foregroundStyle(seriesColor)
+                    .symbolSize(24)
+                }
+                if let h = hoveredPoint {
+                    RuleMark(x: .value("Date", h.date))
+                        .foregroundStyle(Color.lInk3.opacity(0.5))
+                        .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                        .annotation(position: .automatic, alignment: .center, spacing: 4,
+                                    overflowResolution: .init(x: .fit(to: .chart), y: .fit(to: .chart))) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(h.label)
+                                    .font(Typo.eyebrow).tracking(1.0)
+                                    .foregroundStyle(Color.lInk3)
+                                Text(Fmt.currency(showInNative ? h.native : h.display,
+                                                  showInNative ? h.currency : app.displayCurrency))
+                                    .font(Typo.mono(12, weight: .semibold))
+                                    .foregroundStyle(Color.lInk)
+                            }
+                            .padding(.horizontal, 8).padding(.vertical, 5)
+                            .background(Color.lPanel)
+                            .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.lLine, lineWidth: 1))
+                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                            .shadow(color: .black.opacity(0.18), radius: 8, y: 3)
+                        }
+                    PointMark(x: .value("Date", h.date),
+                              y: .value("Value", showInNative ? h.native : h.display))
+                        .foregroundStyle(seriesColor)
+                        .symbolSize(110)
+                }
+            }
+            .chartOverlay { proxy in
+                GeometryReader { geo in
+                    Rectangle().fill(Color.clear).contentShape(Rectangle())
+                        .onContinuousHover { phase in
+                            switch phase {
+                            case .active(let pt):
+                                let origin = proxy.plotFrame.map { geo[$0].origin } ?? .zero
+                                let x = pt.x - origin.x
+                                if let d: Date = proxy.value(atX: x) {
+                                    hoveredPoint = nearestPoint(to: d)
+                                }
+                            case .ended:
+                                hoveredPoint = nil
+                            }
+                        }
+                }
             }
             .chartYAxis {
                 AxisMarks(position: .leading) { _ in

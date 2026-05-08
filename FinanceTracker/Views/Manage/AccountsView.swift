@@ -21,6 +21,7 @@ struct AccountsView: View {
         ColumnSpec(id: "type",    title: "Type",    minWidth: 100, defaultWidth: 140),
         ColumnSpec(id: "ccy",     title: "Ccy",     minWidth: 44,  defaultWidth: 60),
         ColumnSpec(id: "trend",   title: "12mo",    minWidth: 70,  defaultWidth: 90),
+        ColumnSpec(id: "unreal",  title: "Unrealized", minWidth: 100, defaultWidth: 130, alignment: .trailing),
         ColumnSpec(id: "status",  title: "Status",  minWidth: 70,  defaultWidth: 100),
         ColumnSpec(id: "actions", title: "",        minWidth: 140, defaultWidth: 140, alignment: .trailing, resizable: false),
     ])
@@ -40,7 +41,8 @@ struct AccountsView: View {
                     body: "An account is any vessel that holds value — a checking account, a brokerage, a property, a loan. Add one to begin.",
                     detail: "Accounts carry owner, country, and asset type. Values live on snapshots.",
                     ctaLabel: "New Account",
-                    cta: { creatingNew = true }
+                    cta: { creatingNew = true },
+                    illustration: "list.bullet.rectangle"
                 )
             } else {
                 tablePanel
@@ -67,14 +69,69 @@ struct AccountsView: View {
                 }
                 confirmDelete = nil
             }
+            .keyboardShortcut(.defaultAction)
             Button("Cancel", role: .cancel) { confirmDelete = nil }
         } message: {
             Text("Account and all \(confirmDelete?.values.count ?? 0) historical values across snapshots will be deleted. You have 10 seconds to undo.")
         }
-        .onAppear { recomputeTrends() }
+        .onAppear {
+            recomputeTrends()
+            consumePendingFocus()
+        }
+        .onChange(of: app.pendingFocusAccountID) { _, _ in consumePendingFocus() }
+        .onChange(of: editing?.id) { _, id in
+            if let a = editing, let id { app.touchRecent(.account, id: id, label: a.name) }
+        }
+        .onChange(of: detailing?.id) { _, id in
+            if let a = detailing, let id { app.touchRecent(.account, id: id, label: a.name) }
+        }
         .onChange(of: snapshots.count) { _, _ in recomputeTrends() }
         .onChange(of: accounts.count) { _, _ in recomputeTrends() }
         .onChange(of: app.displayCurrency) { _, _ in recomputeTrends() }
+    }
+
+    /// Latest native value of `a` from its most-recent snapshot row.
+    private func latestNativeValue(_ a: Account) -> Double? {
+        guard let v = a.values
+            .compactMap({ av -> (Date, Double)? in
+                guard let s = av.snapshot else { return nil }
+                return (s.date, av.nativeValue)
+            })
+            .max(by: { $0.0 < $1.0 }) else { return nil }
+        return v.1
+    }
+
+    @ViewBuilder
+    private func unrealizedCell(_ a: Account) -> some View {
+        if a.costBasis <= 0 {
+            Text("—")
+                .font(Typo.mono(11))
+                .foregroundStyle(Color.lInk4)
+        } else if let cur = latestNativeValue(a) {
+            let gain = cur - a.costBasis
+            let pct = a.costBasis == 0 ? 0 : gain / a.costBasis * 100
+            VStack(alignment: .trailing, spacing: 1) {
+                Text("\(gain >= 0 ? "+" : "−")\(Fmt.currency(abs(gain), a.nativeCurrency))")
+                    .font(Typo.mono(11.5, weight: .semibold))
+                    .foregroundStyle(gain >= 0 ? Color.lGain : Color.lLoss)
+                Text("\(gain >= 0 ? "+" : "−")\(String(format: "%.1f", abs(pct)))%")
+                    .font(Typo.mono(9.5))
+                    .foregroundStyle(Color.lInk3)
+            }
+            .help("Cost basis \(Fmt.currency(a.costBasis, a.nativeCurrency)) → Current \(Fmt.currency(cur, a.nativeCurrency))")
+            .stealthAmount()
+        } else {
+            Text("no data")
+                .font(Typo.mono(10))
+                .foregroundStyle(Color.lInk4)
+        }
+    }
+
+    private func consumePendingFocus() {
+        guard let id = app.pendingFocusAccountID,
+              let a = accounts.first(where: { $0.id == id }) else { return }
+        detailing = a
+        app.pendingFocusAccountID = nil
     }
 
     private func recomputeTrends() {
@@ -162,6 +219,14 @@ struct AccountsView: View {
                             .overlay(Capsule().stroke(Color.lLoss.opacity(0.5), lineWidth: 1))
                             .help("Last 3 snapshot values identical. Click to review.")
                     }
+                    if a.person?.includeInNetWorth == false {
+                        Text("OFF NW")
+                            .font(Typo.eyebrow).tracking(1.0)
+                            .foregroundStyle(Color.lInk3)
+                            .padding(.horizontal, 5).padding(.vertical, 1)
+                            .overlay(Capsule().stroke(Color.lInk3.opacity(0.5), lineWidth: 1))
+                            .help("Owner excluded from net worth — tracked but not aggregated.")
+                    }
                     Spacer(minLength: 0)
                 }
             }
@@ -209,6 +274,9 @@ struct AccountsView: View {
                           stroke: series.count < 2 ? Color.lInk3 : (up ? Color.lGain : Color.lLoss),
                           fill: (up ? Color.lGain : Color.lLoss).opacity(0.08))
                     .frame(height: 18)
+            }
+            ResizableCell(sizer: sizer, colID: "unreal") {
+                unrealizedCell(a)
             }
             ResizableCell(sizer: sizer, colID: "status") {
                 HStack {

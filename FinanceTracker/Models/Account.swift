@@ -14,6 +14,9 @@ final class Account {
     var isActive: Bool
     var createdAt: Date
     var groupName: String = ""
+    /// Aggregate cost basis in this account's `nativeCurrency`. Used to compute
+    /// unrealized gain (currentValue − costBasis). 0 = unset / not tracked.
+    var costBasis: Double = 0
 
     @Relationship(deleteRule: .cascade, inverse: \AssetValue.account)
     var values: [AssetValue] = []

@@ -33,7 +33,7 @@ enum DashboardPDFExporter {
 
         let panel = NSSavePanel()
         panel.title = "Export Dashboard PDF"
-        panel.nameFieldStringValue = "FinanceTracker-dashboard-\(datestamp()).pdf"
+        panel.nameFieldStringValue = "Ledgerly-dashboard-\(datestamp()).pdf"
         panel.allowedContentTypes = [.pdf]
         guard panel.runModal() == .OK, let dest = panel.url else { return .cancelled }
 

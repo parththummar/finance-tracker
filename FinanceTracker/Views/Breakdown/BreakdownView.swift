@@ -63,7 +63,8 @@ struct BreakdownView: View {
                         cta: {
                             app.newSnapshotRequested = true
                             app.selectedScreen = .snapshots
-                        }
+                        },
+                        illustration: "square.grid.2x2"
                     )
                 }
             } else {

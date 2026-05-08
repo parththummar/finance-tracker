@@ -92,6 +92,7 @@ struct NewSnapshotSheet: View {
         }
         .confirmationDialog("Save changes before closing?", isPresented: $showUnsavedConfirm) {
             Button("Save") { create() }
+                .keyboardShortcut(.defaultAction)
             Button("Discard", role: .destructive) { dismiss() }
             Button("Cancel", role: .cancel) {}
         }

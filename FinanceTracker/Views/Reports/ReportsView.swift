@@ -20,7 +20,8 @@ struct ReportsView: View {
                     body: "Quarter-over-quarter, year-over-year, CAGR, and drift charts all need a series. Lock a second snapshot to unlock reports.",
                     detail: nil,
                     ctaLabel: nil,
-                    cta: nil
+                    cta: nil,
+                    illustration: "doc.text.magnifyingglass"
                 )
             } else {
                 periodComparePanel
@@ -37,12 +38,12 @@ struct ReportsView: View {
     private var ccy: Currency { app.displayCurrency }
 
     private func total(_ s: Snapshot) -> Double {
-        s.values.reduce(0) { $0 + CurrencyConverter.netDisplayValue(for: $1, in: ccy, includeIlliquid: inc) }
+        s.totalsValues.reduce(0) { $0 + CurrencyConverter.netDisplayValue(for: $1, in: ccy, includeIlliquid: inc) }
     }
 
     private func categoryBuckets(_ s: Snapshot) -> [String: Double] {
         var out: [String: Double] = [:]
-        for v in s.values {
+        for v in s.totalsValues {
             guard let cat = v.account?.assetType?.category else { continue }
             if !inc && cat.isIlliquid { continue }
             let dv = CurrencyConverter.netDisplayValue(for: v, in: ccy, includeIlliquid: inc)
@@ -343,7 +344,7 @@ struct ReportsView: View {
 
     private func typeSeries(for t: AssetType) -> [TypePoint] {
         sortedAsc.map { s in
-            let typeVal = s.values.reduce(0.0) { acc, v in
+            let typeVal = s.totalsValues.reduce(0.0) { acc, v in
                 guard v.account?.assetType?.id == t.id else { return acc }
                 if !inc && (v.account?.assetType?.category.isIlliquid ?? false) { return acc }
                 return acc + CurrencyConverter.netDisplayValue(for: v, in: ccy, includeIlliquid: inc)
@@ -377,7 +378,7 @@ struct ReportsView: View {
                     }
                     if series.count >= 2 {
                         drilldownStats(series)
-                        drilldownChart(series)
+                        drilldownChart(series, color: t.map { Palette.color(for: $0.category) } ?? Color.lInk)
                         drilldownAllocation(series)
                     } else {
                         Text("Pick a type with at least two snapshot data points.")
@@ -407,15 +408,15 @@ struct ReportsView: View {
         }
     }
 
-    private func drilldownChart(_ series: [TypePoint]) -> some View {
+    private func drilldownChart(_ series: [TypePoint], color: Color = .lInk) -> some View {
         Chart {
             ForEach(series) { p in
                 AreaMark(x: .value("Date", p.date), y: .value("Value", p.typeValue))
-                    .foregroundStyle(.linearGradient(colors: [Color.lInk.opacity(0.18), Color.lInk.opacity(0.02)],
+                    .foregroundStyle(.linearGradient(colors: [color.opacity(0.25), color.opacity(0.02)],
                                                      startPoint: .top, endPoint: .bottom))
                     .interpolationMethod(.monotone)
                 LineMark(x: .value("Date", p.date), y: .value("Value", p.typeValue))
-                    .foregroundStyle(Color.lInk)
+                    .foregroundStyle(color)
                     .lineStyle(StrokeStyle(lineWidth: 1.4, lineCap: .round, lineJoin: .round))
                     .interpolationMethod(.monotone)
             }
@@ -475,30 +476,52 @@ struct ReportsView: View {
     // MARK: - Heatmap (quarters × categories, QoQ Δ%)
 
     private struct HeatCell {
-        let snapshotID: UUID
-        let snapshotLabel: String
+        let quarterKey: String      // e.g. "2025-Q1"
+        let quarterLabel: String    // display label
         let category: String
-        let pct: Double      // delta vs prior snapshot, in display ccy. NaN if no prior.
-        let abs: Double      // absolute delta
-        let value: Double    // current bucket value
+        let pct: Double             // delta vs prior quarter, in display ccy.
+        let abs: Double             // absolute delta
+        let value: Double           // current bucket value
+    }
+
+    /// Groups snapshots into calendar quarters, picks the latest snapshot in each
+    /// quarter as that quarter's representative datapoint. Returns chronological list.
+    private var quarterSnapshots: [(key: String, label: String, snapshot: Snapshot)] {
+        let cal = Calendar.current
+        var byKey: [String: Snapshot] = [:]
+        for s in sortedAsc {
+            let comps = cal.dateComponents([.year, .month], from: s.date)
+            guard let y = comps.year, let m = comps.month else { continue }
+            let q = (m - 1) / 3 + 1
+            let key = String(format: "%04d-Q%d", y, q)
+            // Latest snapshot in quarter wins.
+            if let existing = byKey[key] {
+                if s.date > existing.date { byKey[key] = s }
+            } else {
+                byKey[key] = s
+            }
+        }
+        return byKey.keys.sorted().map { key in
+            (key: key, label: key.replacingOccurrences(of: "-", with: " "), snapshot: byKey[key]!)
+        }
     }
 
     private var heatmapCells: [HeatCell] {
-        let asc = sortedAsc
-        guard asc.count >= 2 else { return [] }
-        let cats = unionCategoriesAcrossSeries(asc)
+        let qs = quarterSnapshots
+        guard qs.count >= 2 else { return [] }
+        let cats = unionCategoriesAcrossSeries(qs.map { $0.snapshot })
         var out: [HeatCell] = []
-        for i in 1..<asc.count {
-            let prev = asc[i - 1]
-            let cur = asc[i]
+        for i in 1..<qs.count {
+            let prev = qs[i - 1].snapshot
+            let cur = qs[i]
             let bp = categoryBuckets(prev)
-            let bc = categoryBuckets(cur)
+            let bc = categoryBuckets(cur.snapshot)
             for c in cats {
                 let p = bp[c] ?? 0
                 let v = bc[c] ?? 0
                 let d = v - p
                 let pct: Double = p == 0 ? (v == 0 ? 0 : 1) : d / abs_(p)
-                out.append(HeatCell(snapshotID: cur.id, snapshotLabel: cur.label,
+                out.append(HeatCell(quarterKey: cur.key, quarterLabel: cur.label,
                                     category: c, pct: pct, abs: d, value: v))
             }
         }
@@ -523,21 +546,23 @@ struct ReportsView: View {
     @ViewBuilder
     private var heatmapPanel: some View {
         let cells = heatmapCells
-        let cats = unionCategoriesAcrossSeries(sortedAsc)
-        let snaps = sortedAsc.dropFirst()  // skip first (no prior)
+        let qs = quarterSnapshots
+        let cats = unionCategoriesAcrossSeries(qs.map { $0.snapshot })
+        let rows = Array(qs.dropFirst())  // skip first quarter (no prior to delta against)
         Panel {
             VStack(spacing: 0) {
-                PanelHead(title: "QoQ heatmap", meta: "\(snaps.count) periods × \(cats.count) categories")
+                PanelHead(title: "QoQ heatmap", meta: "\(rows.count) quarters × \(cats.count) categories")
                 if cells.isEmpty {
-                    Text("Need at least two locked snapshots.")
+                    Text("Need at least two snapshots in different calendar quarters.")
                         .font(Typo.serifItalic(12))
                         .foregroundStyle(Color.lInk3)
                         .padding(18)
                 } else {
                     VStack(alignment: .leading, spacing: 10) {
                         heatmapHeader(cats: cats)
-                        ForEach(Array(snaps.enumerated()), id: \.element.id) { _, s in
-                            heatmapRow(snapshot: s, cats: cats, cells: cells)
+                        ForEach(rows, id: \.key) { row in
+                            heatmapRow(quarterKey: row.key, quarterLabel: row.label,
+                                       cats: cats, cells: cells)
                         }
                         heatmapLegend
                     }
@@ -570,11 +595,12 @@ struct ReportsView: View {
         }
     }
 
-    private func heatmapRow(snapshot s: Snapshot, cats: [String], cells: [HeatCell]) -> some View {
-        let rowCells = cells.filter { $0.snapshotID == s.id }
+    private func heatmapRow(quarterKey: String, quarterLabel: String,
+                            cats: [String], cells: [HeatCell]) -> some View {
+        let rowCells = cells.filter { $0.quarterKey == quarterKey }
         let rowAbs = rowCells.reduce(0) { $0 + $1.abs }
         return HStack(spacing: 4) {
-            Text(s.label)
+            Text(quarterLabel)
                 .font(Typo.mono(11, weight: .semibold))
                 .foregroundStyle(Color.lInk)
                 .frame(width: 110, alignment: .leading)

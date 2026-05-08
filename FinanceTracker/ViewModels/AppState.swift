@@ -13,7 +13,100 @@ final class AppState: ObservableObject {
     @AppStorage("includeIlliquidInNetWorth") var includeIlliquidInNetWorth: Bool = true
     @AppStorage("netWorthGoal") var netWorthGoal: Double = 0  // 0 = disabled
     @AppStorage("netWorthGoalCurrencyRaw") var netWorthGoalCurrencyRaw: String = Currency.USD.rawValue
+    /// Target date as Unix timestamp. 0 = disabled (no date set).
+    @AppStorage("netWorthGoalDate") var netWorthGoalDateTS: Double = 0
+    @AppStorage("forecastMethod") var forecastMethodRaw: String = ForecastMethod.linear.rawValue
+    @AppStorage("dashboardCompareMode") var dashboardCompareModeRaw: String = "previous"
+
+    enum CompareMode: String, CaseIterable, Identifiable {
+        case previous, yearAgo
+        var id: String { rawValue }
+        var label: String {
+            switch self { case .previous: return "vs Previous"; case .yearAgo: return "vs Year ago" }
+        }
+        var shortLabel: String {
+            switch self { case .previous: return "QoQ"; case .yearAgo: return "YoY" }
+        }
+    }
+    var dashboardCompareMode: CompareMode {
+        get { CompareMode(rawValue: dashboardCompareModeRaw) ?? .previous }
+        set { dashboardCompareModeRaw = newValue.rawValue; objectWillChange.send() }
+    }
+
+    var netWorthGoalDate: Date? {
+        get { netWorthGoalDateTS > 0 ? Date(timeIntervalSince1970: netWorthGoalDateTS) : nil }
+        set {
+            netWorthGoalDateTS = newValue?.timeIntervalSince1970 ?? 0
+            objectWillChange.send()
+        }
+    }
+
+    var forecastMethod: ForecastMethod {
+        get { ForecastMethod(rawValue: forecastMethodRaw) ?? .linear }
+        set { forecastMethodRaw = newValue.rawValue; objectWillChange.send() }
+    }
     @AppStorage("compactMode") var compactMode: Bool = false
+    @AppStorage("requireAppLock") var requireAppLock: Bool = true
+    @AppStorage("stealthMode") var stealthMode: Bool = false
+    @AppStorage("sidebarWidth") var sidebarWidth: Double = 220
+    @AppStorage("sidebarLastExpandedWidth") var sidebarLastExpandedWidth: Double = 220
+    @AppStorage("dashboardWidgetOrder") var dashboardWidgetOrderRaw: String = ""
+    @AppStorage("dashboardWidgetsHidden") var dashboardWidgetsHiddenRaw: String = ""
+    @AppStorage("menuBarEnabled") var menuBarEnabled: Bool = false
+    /// Recent items stack: pipe-separated entries "kind|uuid|label". Newest first.
+    @AppStorage("recentItems") var recentItemsRaw: String = ""
+
+    enum RecentKind: String { case account, snapshot, person, country }
+
+    struct RecentItem: Identifiable, Equatable {
+        let kind: RecentKind
+        let entityID: UUID
+        let label: String
+        var id: String { "\(kind.rawValue)-\(entityID.uuidString)" }
+        static func ==(a: RecentItem, b: RecentItem) -> Bool {
+            a.kind == b.kind && a.entityID == b.entityID
+        }
+    }
+
+    var recentItems: [RecentItem] {
+        recentItemsRaw.split(separator: "\n").compactMap { line in
+            let parts = line.split(separator: "|", maxSplits: 2, omittingEmptySubsequences: false).map(String.init)
+            guard parts.count == 3,
+                  let kind = RecentKind(rawValue: parts[0]),
+                  let id = UUID(uuidString: parts[1]) else { return nil }
+            return RecentItem(kind: kind, entityID: id, label: parts[2])
+        }
+    }
+
+    func touchRecent(_ kind: RecentKind, id: UUID, label: String) {
+        var list = recentItems
+        list.removeAll { $0.kind == kind && $0.entityID == id }
+        list.insert(RecentItem(kind: kind, entityID: id, label: label), at: 0)
+        if list.count > 6 { list = Array(list.prefix(6)) }
+        recentItemsRaw = list.map { "\($0.kind.rawValue)|\($0.entityID.uuidString)|\($0.label)" }
+            .joined(separator: "\n")
+        objectWillChange.send()
+    }
+
+    var dashboardWidgetOrder: [DashboardWidget] {
+        get { DashboardLayout.decodeOrder(dashboardWidgetOrderRaw) }
+        set { dashboardWidgetOrderRaw = DashboardLayout.encodeOrder(newValue); objectWillChange.send() }
+    }
+
+    var dashboardWidgetsHidden: Set<DashboardWidget> {
+        get { DashboardLayout.decodeHidden(dashboardWidgetsHiddenRaw) }
+        set { dashboardWidgetsHiddenRaw = DashboardLayout.encodeHidden(newValue); objectWillChange.send() }
+    }
+    @AppStorage("appIconChoice") var appIconChoiceRaw: String = AppIconChoice.ledgerly.rawValue
+
+    var appIconChoice: AppIconChoice {
+        get { AppIconChoice(rawValue: appIconChoiceRaw) ?? .ledgerly }
+        set {
+            appIconChoiceRaw = newValue.rawValue
+            objectWillChange.send()
+            AppIconSwitcher.apply(newValue)
+        }
+    }
 
     var netWorthGoalCurrency: Currency {
         get { Currency(rawValue: netWorthGoalCurrencyRaw) ?? .USD }
@@ -29,6 +122,15 @@ final class AppState: ObservableObject {
     @Published var newSnapshotRequested: Bool = false
     @Published var pendingBreakdownFilter: PendingFilter? = nil
     @Published var globalSearchFocusTick: Int = 0
+    @Published var commandPaletteOpen: Bool = false
+
+    /// Set by GlobalSearchField to request that a manage view open the editor
+    /// sheet for a specific entity ID after navigation. Each manage view
+    /// observes its corresponding field, opens the sheet, and clears it.
+    @Published var pendingFocusPersonID:    UUID? = nil
+    @Published var pendingFocusAccountID:   UUID? = nil
+    @Published var pendingFocusCountryID:   UUID? = nil
+    @Published var pendingFocusAssetTypeID: UUID? = nil
 
     var displayCurrency: Currency {
         get { Currency(rawValue: displayCurrencyRaw) ?? .USD }

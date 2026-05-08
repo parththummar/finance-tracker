@@ -63,13 +63,15 @@ struct SnapshotDiffView: View {
                     cta: {
                         app.newSnapshotRequested = true
                         app.selectedScreen = .snapshots
-                    }
+                    },
+                    illustration: "arrow.left.arrow.right"
                 )
             } else {
                 VStack(alignment: .leading, spacing: 20) {
                     header
                     pickerRow
                     kpiRow
+                    Panel { sankeySection }
                     Panel { tableSection }
                 }
             }
@@ -191,6 +193,46 @@ struct SnapshotDiffView: View {
         guard a != 0 else { return "—" }
         let p = (b - a) / abs(a) * 100
         return "\(p >= 0 ? "+" : "−")\(String(format: "%.2f", abs(p)))% total"
+    }
+
+    // MARK: sankey
+
+    private var sankeyFlows: [SankeyFlow] {
+        cachedRows.compactMap { r in
+            let status: SankeyFlow.Status
+            switch r.status {
+            case .same:    status = .same
+            case .added:   status = .added
+            case .dropped: status = .dropped
+            }
+            // Skip rows where both sides are zero — nothing to draw.
+            if r.valA == 0 && r.valB == 0 { return nil }
+            return SankeyFlow(id: r.id, name: r.name,
+                              valA: max(r.valA, 0), valB: max(r.valB, 0),
+                              status: status)
+        }
+    }
+
+    private var sankeySection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            PanelHead(title: "Money flow",
+                      meta: "\(sankeyFlows.count) accounts")
+            if sankeyFlows.isEmpty {
+                Text("Nothing to flow.")
+                    .font(Typo.serifItalic(13))
+                    .foregroundStyle(Color.lInk3)
+                    .padding(18)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                SnapshotSankeyView(
+                    flows: sankeyFlows,
+                    labelA: snapA?.label ?? "From",
+                    labelB: snapB?.label ?? "To"
+                )
+                .frame(height: max(280, CGFloat(sankeyFlows.count) * 24))
+                .padding(.horizontal, 18).padding(.vertical, 14)
+            }
+        }
     }
 
     // MARK: table

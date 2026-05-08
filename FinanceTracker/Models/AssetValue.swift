@@ -16,4 +16,18 @@ final class AssetValue {
         self.nativeValue = nativeValue
         self.note = note
     }
+
+    /// True when this AssetValue contributes to net-worth totals. Excludes
+    /// values whose owning Person is flagged with `includeInNetWorth = false`
+    /// (e.g. parents/partners tracked alongside but not part of own net worth).
+    /// Per-row displays (snapshot editor rows, account rows) ignore this flag —
+    /// only aggregators should filter on it.
+    var includedInTotals: Bool {
+        account?.person?.includeInNetWorth ?? true
+    }
+}
+
+extension Snapshot {
+    /// AssetValues that aggregate into net worth (filters out excluded persons).
+    var totalsValues: [AssetValue] { values.filter(\.includedInTotals) }
 }

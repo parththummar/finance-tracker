@@ -44,7 +44,28 @@ struct RootView: View {
             if app.activeSnapshotID == nil, let latest = snapshots.first {
                 app.activeSnapshotID = latest.id
             }
+            MenuBarController.shared.setDisplayCurrency(app.displayCurrency)
+            MenuBarController.shared.setStealth(app.stealthMode)
         }
+        .onChange(of: app.displayCurrency) { _, c in
+            MenuBarController.shared.setDisplayCurrency(c)
+        }
+        .onChange(of: app.stealthMode) { _, on in
+            MenuBarController.shared.setStealth(on)
+        }
+        .onChange(of: snapshots.count) { _, _ in
+            MenuBarController.shared.refresh()
+        }
+        .sheet(isPresented: $app.commandPaletteOpen) {
+            CommandPalette()
+                .environmentObject(app)
+        }
+        .background(
+            Button("") { app.commandPaletteOpen = true }
+                .keyboardShortcut("k", modifiers: .command)
+                .opacity(0)
+                .frame(width: 0, height: 0)
+        )
     }
 
     @ViewBuilder

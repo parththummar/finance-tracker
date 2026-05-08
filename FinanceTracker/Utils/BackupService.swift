@@ -19,11 +19,19 @@ enum BackupInterval: String, CaseIterable, Identifiable {
 
 enum BackupService {
     nonisolated static let storeFilename = "default.store"
+    // Backups directory kept under legacy name to preserve continuity with
+    // existing user data; new files are written with "Ledgerly-*" prefixes
+    // and `list()` recognizes both naming schemes.
     nonisolated private static let backupsDirName = "FinanceTracker-Backups"
-    nonisolated private static let autoPrefix = "FinanceTracker-auto-"
-    nonisolated private static let manualPrefix = "FinanceTracker-backup-"
-    nonisolated static let lockPrefix = "FinanceTracker-snapshot-"
-    nonisolated static let quitPrefix = "FinanceTracker-quit-"
+    nonisolated private static let autoPrefix = "Ledgerly-auto-"
+    nonisolated private static let manualPrefix = "Ledgerly-backup-"
+    nonisolated static let lockPrefix = "Ledgerly-snapshot-"
+    nonisolated static let quitPrefix = "Ledgerly-quit-"
+    // Legacy prefixes recognized when listing existing backups.
+    nonisolated private static let legacyAutoPrefix = "FinanceTracker-auto-"
+    nonisolated private static let legacyManualPrefix = "FinanceTracker-backup-"
+    nonisolated static let legacyLockPrefix = "FinanceTracker-snapshot-"
+    nonisolated static let legacyQuitPrefix = "FinanceTracker-quit-"
     nonisolated private static let customRotateKeep = 3
 
     // MARK: - Paths
@@ -71,8 +79,9 @@ enum BackupService {
             let date = values?.contentModificationDate ?? .distantPast
             let size = Int64(values?.fileSize ?? 0)
             let kind: BackupFile.Kind
-            if url.lastPathComponent.hasPrefix(autoPrefix)   { kind = .auto }
-            else if url.lastPathComponent.hasPrefix(manualPrefix) { kind = .manual }
+            let name = url.lastPathComponent
+            if name.hasPrefix(autoPrefix) || name.hasPrefix(legacyAutoPrefix) { kind = .auto }
+            else if name.hasPrefix(manualPrefix) || name.hasPrefix(legacyManualPrefix) { kind = .manual }
             else { kind = .other }
             return BackupFile(id: url, url: url, date: date, size: size, kind: kind)
         }
@@ -352,14 +361,14 @@ enum BackupService {
             let p = sidecar(dst, suffix)
             if fm.fileExists(atPath: p.path) {
                 do { try fm.removeItem(at: p) }
-                catch { NSLog("FinanceTracker: failed remove \(p.path): \(error)") }
+                catch { NSLog("Ledgerly: failed remove \(p.path): \(error)") }
             }
         }
         // Move pending into place.
         do {
             try fm.copyItem(at: pendStore, to: dst)
         } catch {
-            NSLog("FinanceTracker: applyPendingRestore — copy failed: \(error)")
+            NSLog("Ledgerly: applyPendingRestore — copy failed: \(error)")
             try? fm.removeItem(at: flag)
             return false
         }

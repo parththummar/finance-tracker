@@ -45,6 +45,8 @@ struct SettingsView: View {
             HStack(alignment: .top, spacing: 18) {
                 VStack(spacing: 18) {
                     displayPanel
+                    appIconPanel
+                    dashboardWidgetsPanel
                     categoryColorsPanel
                     fxRatePanel
                     dataPanel
@@ -52,6 +54,7 @@ struct SettingsView: View {
                 .frame(maxWidth: .infinity, alignment: .top)
 
                 VStack(spacing: 18) {
+                    securityPanel
                     remindersPanel
                     autoBackupPanel
                     exportPanel
@@ -72,6 +75,7 @@ struct SettingsView: View {
             Button("Delete all and re-seed", role: .destructive) {
                 resetAllData()
             }
+            .keyboardShortcut(.defaultAction)
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("Deletes every person, country, account, snapshot, and value. Re-seeds with sample data. Cannot be undone.")
@@ -88,14 +92,16 @@ struct SettingsView: View {
                 if let url = pendingRestore { performRestore(url) }
                 pendingRestore = nil
             }
+            .keyboardShortcut(.defaultAction)
             Button("Cancel", role: .cancel) { pendingRestore = nil }
         } message: {
             Text("Current data will be replaced. A safety copy of the current store is saved to the backups folder before restore. App will quit after restore — relaunch to load the restored data.")
         }
         .alert("Restore staged", isPresented: $showingRelaunchAlert) {
             Button("Quit Now") { NSApp.terminate(nil) }
+                .keyboardShortcut(.defaultAction)
         } message: {
-            Text("Backup will replace the live store on next launch. Quit now, then reopen FinanceTracker — the restore applies before any data loads. A safety copy of the current store is saved automatically.")
+            Text("Backup will replace the live store on next launch. Quit now, then reopen Ledgerly — the restore applies before any data loads. A safety copy of the current store is saved automatically.")
         }
         .fileImporter(
             isPresented: $showingImportPicker,
@@ -111,6 +117,7 @@ struct SettingsView: View {
                 get: { importResult != nil },
                 set: { if !$0 { importResult = nil } })) {
             Button("OK") { importResult = nil }
+                .keyboardShortcut(.defaultAction)
         } message: {
             Text(importResult ?? "")
         }
@@ -131,6 +138,306 @@ struct SettingsView: View {
     }
 
     // MARK: - Panels
+
+    private var securityPanel: some View {
+        Panel {
+            VStack(alignment: .leading, spacing: 0) {
+                PanelHead(title: "Security",
+                          meta: app.requireAppLock ? "Lock on" : "Unlocked")
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack(alignment: .center, spacing: 14) {
+                        ZStack {
+                            Circle()
+                                .fill(app.requireAppLock
+                                      ? Color.lGain.opacity(0.14)
+                                      : Color.lInk3.opacity(0.10))
+                                .frame(width: 36, height: 36)
+                            Image(systemName: app.requireAppLock ? "lock.fill" : "lock.open.fill")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(app.requireAppLock ? Color.lGain : Color.lInk3)
+                        }
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Require unlock on launch")
+                                .font(Typo.sans(13, weight: .semibold))
+                                .foregroundStyle(Color.lInk)
+                            Text(AppLockGate.available
+                                 ? "Touch ID, Apple Watch, or system password."
+                                 : "No biometric or password method available on this device.")
+                                .font(Typo.sans(11))
+                                .foregroundStyle(Color.lInk3)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer(minLength: 6)
+                        Toggle("", isOn: Binding(
+                            get: { app.requireAppLock },
+                            set: { app.requireAppLock = $0 }
+                        ))
+                        .toggleStyle(.switch)
+                        .labelsHidden()
+                        .disabled(!AppLockGate.available)
+                        .pointerStyle(.link)
+                    }
+
+                    Divider().overlay(Color.lLine)
+
+                    HStack(alignment: .center, spacing: 14) {
+                        ZStack {
+                            Circle()
+                                .fill(app.menuBarEnabled
+                                      ? Color.lInk.opacity(0.10)
+                                      : Color.lInk3.opacity(0.10))
+                                .frame(width: 36, height: 36)
+                            Image(systemName: "menubar.rectangle")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(app.menuBarEnabled ? Color.lInk : Color.lInk3)
+                        }
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Menu bar item")
+                                .font(Typo.sans(13, weight: .semibold))
+                                .foregroundStyle(Color.lInk)
+                            Text("Net worth + QoQ delta in the system menu bar. Refreshes every minute.")
+                                .font(Typo.sans(11))
+                                .foregroundStyle(Color.lInk3)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer(minLength: 6)
+                        Toggle("", isOn: Binding(
+                            get: { app.menuBarEnabled },
+                            set: { newOn in
+                                app.menuBarEnabled = newOn
+                                MenuBarController.shared.setEnabled(newOn)
+                                if newOn {
+                                    MenuBarController.shared.setDisplayCurrency(app.displayCurrency)
+                                    MenuBarController.shared.setStealth(app.stealthMode)
+                                }
+                            }
+                        ))
+                        .toggleStyle(.switch)
+                        .labelsHidden()
+                        .pointerStyle(.link)
+                    }
+
+                    Divider().overlay(Color.lLine)
+
+                    HStack(alignment: .center, spacing: 14) {
+                        ZStack {
+                            Circle()
+                                .fill(app.stealthMode
+                                      ? Color.lInk.opacity(0.10)
+                                      : Color.lInk3.opacity(0.10))
+                                .frame(width: 36, height: 36)
+                            Image(systemName: app.stealthMode ? "eye.slash.fill" : "eye.fill")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(app.stealthMode ? Color.lInk : Color.lInk3)
+                        }
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Stealth mode")
+                                .font(Typo.sans(13, weight: .semibold))
+                                .foregroundStyle(Color.lInk)
+                            Text("Blurs amounts everywhere. Hover to reveal individual values.")
+                                .font(Typo.sans(11))
+                                .foregroundStyle(Color.lInk3)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer(minLength: 6)
+                        Toggle("", isOn: Binding(
+                            get: { app.stealthMode },
+                            set: { app.stealthMode = $0 }
+                        ))
+                        .toggleStyle(.switch)
+                        .labelsHidden()
+                        .pointerStyle(.link)
+                    }
+
+                    HStack(alignment: .top, spacing: 6) {
+                        Image(systemName: "info.circle")
+                            .font(.system(size: 10))
+                            .foregroundStyle(Color.lInk3)
+                            .padding(.top, 2)
+                        Text("Shoulder-surf protection only. The SwiftData store on disk stays unencrypted — anyone with file access can still read it.")
+                            .font(Typo.sans(10.5))
+                            .foregroundStyle(Color.lInk3)
+                            .lineSpacing(2)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(.horizontal, 10).padding(.vertical, 8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.lSunken.opacity(0.5))
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                }
+                .padding(.horizontal, 18).padding(.vertical, 14)
+            }
+        }
+    }
+
+    private var dashboardWidgetsPanel: some View {
+        Panel {
+            VStack(alignment: .leading, spacing: 0) {
+                PanelHead(title: "Dashboard widgets",
+                          meta: "\(app.dashboardWidgetOrder.filter { !app.dashboardWidgetsHidden.contains($0) }.count) of \(DashboardWidget.allCases.count) shown")
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Drag rows to reorder. Toggle to show/hide.")
+                        .font(Typo.sans(11))
+                        .foregroundStyle(Color.lInk3)
+                        .padding(.horizontal, 18).padding(.top, 12)
+                    ForEach(Array(app.dashboardWidgetOrder.enumerated()), id: \.element) { idx, w in
+                        widgetRow(w: w, idx: idx)
+                    }
+                    HStack {
+                        Spacer()
+                        GhostButton(action: {
+                            app.dashboardWidgetOrderRaw = ""
+                            app.dashboardWidgetsHiddenRaw = ""
+                        }) { Text("Reset to defaults") }
+                    }
+                    .padding(.horizontal, 18).padding(.vertical, 10)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func widgetRow(w: DashboardWidget, idx: Int) -> some View {
+        let order = app.dashboardWidgetOrder
+        let hidden = app.dashboardWidgetsHidden.contains(w)
+        HStack(spacing: 10) {
+            Image(systemName: "line.3.horizontal")
+                .font(.system(size: 11))
+                .foregroundStyle(Color.lInk4)
+            Image(systemName: w.icon)
+                .font(.system(size: 12))
+                .foregroundStyle(hidden ? Color.lInk4 : Color.lInk2)
+                .frame(width: 18)
+            Text(w.label)
+                .font(Typo.sans(12.5, weight: .medium))
+                .foregroundStyle(hidden ? Color.lInk3 : Color.lInk)
+            Spacer()
+            Button {
+                guard idx > 0 else { return }
+                var copy = order
+                copy.swapAt(idx, idx - 1)
+                app.dashboardWidgetOrder = copy
+            } label: {
+                Image(systemName: "chevron.up")
+                    .font(.system(size: 10, weight: .bold))
+            }
+            .buttonStyle(.plain).pointerStyle(.link)
+            .disabled(idx == 0)
+            .opacity(idx == 0 ? 0.3 : 1)
+            Button {
+                guard idx < order.count - 1 else { return }
+                var copy = order
+                copy.swapAt(idx, idx + 1)
+                app.dashboardWidgetOrder = copy
+            } label: {
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 10, weight: .bold))
+            }
+            .buttonStyle(.plain).pointerStyle(.link)
+            .disabled(idx == order.count - 1)
+            .opacity(idx == order.count - 1 ? 0.3 : 1)
+            Toggle("", isOn: Binding(
+                get: { !app.dashboardWidgetsHidden.contains(w) },
+                set: { newOn in
+                    var h = app.dashboardWidgetsHidden
+                    if newOn { h.remove(w) } else { h.insert(w) }
+                    app.dashboardWidgetsHidden = h
+                }
+            ))
+            .toggleStyle(.switch)
+            .labelsHidden()
+            .controlSize(.small)
+        }
+        .padding(.horizontal, 18).padding(.vertical, 6)
+        .background(idx.isMultiple(of: 2) ? Color.clear : Color.lSunken.opacity(0.4))
+        .draggable(w.rawValue) {
+            HStack(spacing: 6) {
+                Image(systemName: w.icon)
+                Text(w.label).font(Typo.sans(12, weight: .medium))
+            }
+            .padding(8)
+            .background(Color.lPanel)
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.lLine, lineWidth: 1))
+        }
+        .dropDestination(for: String.self) { items, _ in
+            guard let raw = items.first, let dragged = DashboardWidget(rawValue: raw) else { return false }
+            var copy = app.dashboardWidgetOrder
+            guard let from = copy.firstIndex(of: dragged) else { return false }
+            copy.remove(at: from)
+            let insertIdx = min(idx, copy.count)
+            copy.insert(dragged, at: insertIdx)
+            app.dashboardWidgetOrder = copy
+            return true
+        }
+    }
+
+    private var appIconPanel: some View {
+        Panel {
+            VStack(alignment: .leading, spacing: 0) {
+                PanelHead(title: "App icon",
+                          meta: "Dock + window menu")
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Updates while the app runs. The bundle's default icon shows when the app is closed.")
+                        .font(Typo.sans(11))
+                        .foregroundStyle(Color.lInk3)
+                    HStack(spacing: 14) {
+                        ForEach(AppIconChoice.allCases) { choice in
+                            iconChoiceCard(choice)
+                        }
+                        Spacer(minLength: 0)
+                    }
+                }
+                .padding(.horizontal, 18).padding(.vertical, 14)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func iconChoiceCard(_ choice: AppIconChoice) -> some View {
+        let selected = app.appIconChoice == choice
+        Button {
+            app.appIconChoice = choice
+        } label: {
+            VStack(spacing: 8) {
+                Image(choice.assetName)
+                    .resizable()
+                    .interpolation(.high)
+                    .frame(width: 56, height: 56)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(selected ? Color.lInk : Color.lLine,
+                                    lineWidth: selected ? 2 : 1)
+                    )
+                VStack(spacing: 1) {
+                    Text(choice.label)
+                        .font(Typo.sans(12, weight: .semibold))
+                        .foregroundStyle(Color.lInk)
+                    Text(choice.subtitle)
+                        .font(Typo.sans(10.5))
+                        .foregroundStyle(Color.lInk3)
+                        .lineLimit(1)
+                }
+                if selected {
+                    HStack(spacing: 4) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 10))
+                        Text("Active")
+                            .font(Typo.eyebrow).tracking(1.2)
+                    }
+                    .foregroundStyle(Color.lGain)
+                } else {
+                    Text(" ").font(Typo.eyebrow)
+                }
+            }
+            .padding(.horizontal, 12).padding(.vertical, 10)
+            .background(Color.lPanel.opacity(0.001))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .pointerStyle(.link)
+    }
 
     private var displayPanel: some View {
         Panel {
@@ -208,6 +515,31 @@ struct SettingsView: View {
                                     set: { app.netWorthGoalCurrency = $0 }
                                 )
                             )
+                        }
+                    }
+                    Divider().overlay(Color.lLine)
+                    settingRow(label: "Goal target date",
+                               sublabel: "Optional. Drives ETA and progress pacing on Dashboard.") {
+                        HStack(spacing: 6) {
+                            DatePicker("",
+                                       selection: Binding(
+                                        get: { app.netWorthGoalDate ?? Date.now.addingTimeInterval(86400 * 365) },
+                                        set: { app.netWorthGoalDate = $0 }),
+                                       displayedComponents: .date)
+                                .labelsHidden()
+                                .disabled(app.netWorthGoal <= 0)
+                            if app.netWorthGoalDate != nil {
+                                Button {
+                                    app.netWorthGoalDate = nil
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .font(.system(size: 11))
+                                        .foregroundStyle(Color.lInk3)
+                                }
+                                .buttonStyle(.plain)
+                                .pointerStyle(.link)
+                                .help("Clear target date")
+                            }
                         }
                     }
                 }
@@ -804,7 +1136,7 @@ struct SettingsView: View {
         }
         let panel = NSSavePanel()
         panel.title = "Backup Database"
-        panel.nameFieldStringValue = "FinanceTracker-backup-\(datestamp()).store"
+        panel.nameFieldStringValue = "Ledgerly-backup-\(datestamp()).store"
         panel.allowedContentTypes = [UTType(filenameExtension: "store") ?? .data]
         guard panel.runModal() == .OK, let dest = panel.url else { return }
         do {

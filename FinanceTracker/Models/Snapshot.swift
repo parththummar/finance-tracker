@@ -11,6 +11,17 @@ final class Snapshot {
     var lockedAt: Date?
     var notes: String
     var createdAt: Date
+    /// Pre-computed totals filled when the snapshot is locked. Used for fast
+    /// Dashboard / SnapshotListView rendering. Recomputed on lock; cleared on
+    /// unlock or value edit (for active snapshot Dashboard recomputes anyway).
+    var cachedTotalUSD: Double = 0
+    var cachedTotalINR: Double = 0
+    var cachedTotalsLiquid: Double = 0   // in USD
+    var cachedTotalsInvested: Double = 0
+    var cachedTotalsRetirement: Double = 0
+    var cachedTotalsInsurance: Double = 0
+    var cachedTotalsDebt: Double = 0
+    var cacheValid: Bool = false
 
     @Relationship(deleteRule: .cascade, inverse: \AssetValue.snapshot)
     var values: [AssetValue] = []

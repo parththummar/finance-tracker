@@ -8,8 +8,10 @@ struct SnapshotEditorView: View {
     @EnvironmentObject var undo: UndoStash
     @Query(sort: \Snapshot.date, order: .reverse) private var allSnapshots: [Snapshot]
     @Query(sort: \Receivable.name) private var allReceivables: [Receivable]
+    @Query(sort: \Account.name) private var allAccounts: [Account]
     let snapshot: Snapshot
     @State private var confirmingLock = false
+    @State private var confirmingUnlock = false
     @State private var confirmingDelete = false
     @State private var isFetchingRate = false
     @State private var fetchError: String?
@@ -36,7 +38,7 @@ struct SnapshotEditorView: View {
 
     private var liveTotalDisplay: Double {
         let inc = app.includeIlliquidInNetWorth
-        return snapshot.values.reduce(0.0) { sum, v in
+        return snapshot.totalsValues.reduce(0.0) { sum, v in
             sum + CurrencyConverter.netDisplayValue(for: v, in: app.displayCurrency, includeIlliquid: inc)
         }
     }
@@ -44,7 +46,7 @@ struct SnapshotEditorView: View {
     private var previousTotalDisplay: Double? {
         guard let prev = previousSnapshot else { return nil }
         let inc = app.includeIlliquidInNetWorth
-        return prev.values.reduce(0.0) { sum, v in
+        return prev.totalsValues.reduce(0.0) { sum, v in
             sum + CurrencyConverter.netDisplayValue(for: v, in: app.displayCurrency, includeIlliquid: inc)
         }
     }
@@ -101,6 +103,7 @@ struct SnapshotEditorView: View {
                 sanityWarning = nil
                 commitSave(dismissAfter: after)
             }
+            .keyboardShortcut(.defaultAction)
             Button("Review values", role: .cancel) {
                 sanityWarning = nil
             }
@@ -109,6 +112,7 @@ struct SnapshotEditorView: View {
         }
         .onAppear {
             context.autosaveEnabled = false
+            backfillAccountValues()
             backfillReceivableValues()
         }
         .onDisappear {
@@ -144,12 +148,30 @@ struct SnapshotEditorView: View {
                 }
                 snapshot.isLocked = true
                 snapshot.lockedAt = .now
+                SnapshotCache.recompute(snapshot)
                 try? context.save()
                 _ = BackupService.backupOnLock(label: snapshot.label)
             }
+            .keyboardShortcut(.defaultAction)
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("Values become read-only. Exchange rate frozen at \(String(format: "%.2f", snapshot.usdToInrRate)).")
+        }
+        .confirmationDialog("Unlock \(snapshot.label)?",
+                            isPresented: $confirmingUnlock,
+                            titleVisibility: .visible) {
+            Button("Unlock", role: .destructive) {
+                snapshot.isLocked = false
+                snapshot.lockedAt = nil
+                SnapshotCache.invalidate(snapshot)
+                try? context.save()
+                backfillAccountValues()
+                backfillReceivableValues()
+            }
+            .keyboardShortcut(.defaultAction)
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Values and exchange rate become editable again. Missing accounts/receivables will be backfilled with 0. Re-lock when done.")
         }
         .confirmationDialog("Delete \(snapshot.label)?",
                             isPresented: $confirmingDelete,
@@ -162,6 +184,7 @@ struct SnapshotEditorView: View {
                 undo.stash(.snapshot(cap))
                 dismiss()
             }
+            .keyboardShortcut(.defaultAction)
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("Removes this snapshot and all \(snapshot.values.count) account values.")
@@ -183,6 +206,7 @@ struct SnapshotEditorView: View {
                             .foregroundStyle(Color.lInk)
                         Pill(text: snapshot.isLocked ? "🔒 locked" : "✎ draft",
                              emphasis: !snapshot.isLocked)
+                        completenessBadge
                     }
                     Text(snapshot.isLocked
                          ? "Locked \(snapshot.lockedAt.map { Fmt.date($0) } ?? "") · values frozen"
@@ -202,6 +226,41 @@ struct SnapshotEditorView: View {
         .padding(.horizontal, 24).padding(.top, 22).padding(.bottom, 18)
         .frame(maxWidth: .infinity, alignment: .leading)
         .overlay(Rectangle().frame(height: 1).foregroundStyle(Color.lLine), alignment: .bottom)
+    }
+
+    private var completeness: SnapshotCompleteness.Result {
+        SnapshotCompleteness.evaluate(snapshot: snapshot,
+                                      accounts: allAccounts,
+                                      receivables: allReceivables)
+    }
+
+    @ViewBuilder
+    private var completenessBadge: some View {
+        let r = completeness
+        if r.totalRows > 0 {
+            if r.isComplete {
+                HStack(spacing: 4) {
+                    Image(systemName: "checkmark.circle.fill").font(.system(size: 10))
+                    Text("Complete").font(Typo.mono(11, weight: .semibold))
+                }
+                .foregroundStyle(Color.lGain)
+                .padding(.horizontal, 8).padding(.vertical, 3)
+                .overlay(Capsule().stroke(Color.lGain.opacity(0.5), lineWidth: 1))
+                .clipShape(Capsule())
+                .help("All \(r.totalRows) rows have non-zero values.")
+            } else {
+                HStack(spacing: 4) {
+                    Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 10))
+                    Text("\(r.filledRows)/\(r.totalRows) filled · \(r.missingCount) missing")
+                        .font(Typo.mono(11, weight: .semibold))
+                }
+                .foregroundStyle(Color.lLoss)
+                .padding(.horizontal, 8).padding(.vertical, 3)
+                .overlay(Capsule().stroke(Color.lLoss.opacity(0.5), lineWidth: 1))
+                .clipShape(Capsule())
+                .help("Rows with zero value are highlighted red below.")
+            }
+        }
     }
 
     private var rateBlock: some View {
@@ -297,11 +356,18 @@ struct SnapshotEditorView: View {
         let ccy = v.account?.nativeCurrency ?? .USD
         let prev = previousValue(for: v.account)
         let diff = prev.map { v.nativeValue - $0 }
+        let isMissing = (v.account?.isActive ?? false) && abs(v.nativeValue) <= 0.0001
         HStack {
-            Text(v.account?.name ?? "—")
-                .font(Typo.sans(13, weight: .medium))
-                .foregroundStyle(Color.lInk)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            HStack(spacing: 6) {
+                if isMissing {
+                    Circle().fill(Color.lLoss).frame(width: 6, height: 6)
+                        .help("Missing value — active account but zero recorded.")
+                }
+                Text(v.account?.name ?? "—")
+                    .font(Typo.sans(13, weight: .medium))
+                    .foregroundStyle(Color.lInk)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             Text(v.account?.person?.name ?? "—")
                 .font(Typo.sans(12))
@@ -360,7 +426,16 @@ struct SnapshotEditorView: View {
             }
         }
         .padding(.horizontal, 18).padding(.vertical, 10)
-        .background(idx.isMultiple(of: 2) ? Color.clear : Color.lSunken.opacity(0.5))
+        .background(
+            isMissing
+                ? Color.lLoss.opacity(0.06)
+                : (idx.isMultiple(of: 2) ? Color.clear : Color.lSunken.opacity(0.5))
+        )
+        .overlay(alignment: .leading) {
+            if isMissing {
+                Rectangle().fill(Color.lLoss).frame(width: 2)
+            }
+        }
     }
 
     private var totalsRow: some View {
@@ -417,6 +492,22 @@ struct SnapshotEditorView: View {
         allReceivables.filter { r in
             r.isActive && r.startDate <= snapshot.date
         }
+    }
+
+    /// Insert zero-value AssetValue rows for every active account that has no
+    /// row in this snapshot. Lets user fill in forgotten accounts in past
+    /// (unlocked) snapshots. Locked snapshots are skipped to honor immutability;
+    /// missing-count chip in header signals need to unlock.
+    private func backfillAccountValues() {
+        guard !snapshot.isLocked else { return }
+        let existingIDs = Set(snapshot.values.compactMap { $0.account?.id })
+        var inserted = false
+        for a in allAccounts where a.isActive && !existingIDs.contains(a.id) {
+            let av = AssetValue(snapshot: snapshot, account: a, nativeValue: 0)
+            context.insert(av)
+            inserted = true
+        }
+        if inserted { try? context.save() }
     }
 
     private func backfillReceivableValues() {
@@ -483,11 +574,20 @@ struct SnapshotEditorView: View {
         let ccy = rv.receivable?.nativeCurrency ?? .USD
         let prev = previousReceivableValue(for: rv.receivable)
         let diff = prev.map { rv.nativeValue - $0 }
+        let r = rv.receivable
+        let applicable = (r?.isActive ?? false) && (r?.startDate ?? .distantPast) <= snapshot.date
+        let isMissing = applicable && abs(rv.nativeValue) <= 0.0001
         HStack {
-            Text(rv.receivable?.name ?? "—")
-                .font(Typo.sans(13, weight: .medium))
-                .foregroundStyle(Color.lInk)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            HStack(spacing: 6) {
+                if isMissing {
+                    Circle().fill(Color.lLoss).frame(width: 6, height: 6)
+                        .help("Missing value — applicable receivable but zero recorded.")
+                }
+                Text(rv.receivable?.name ?? "—")
+                    .font(Typo.sans(13, weight: .medium))
+                    .foregroundStyle(Color.lInk)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             Text(rv.receivable?.debtor.isEmpty == false ? rv.receivable!.debtor : "—")
                 .font(Typo.sans(12))
@@ -546,7 +646,16 @@ struct SnapshotEditorView: View {
             }
         }
         .padding(.horizontal, 18).padding(.vertical, 10)
-        .background(idx.isMultiple(of: 2) ? Color.clear : Color.lSunken.opacity(0.5))
+        .background(
+            isMissing
+                ? Color.lLoss.opacity(0.06)
+                : (idx.isMultiple(of: 2) ? Color.clear : Color.lSunken.opacity(0.5))
+        )
+        .overlay(alignment: .leading) {
+            if isMissing {
+                Rectangle().fill(Color.lLoss).frame(width: 2)
+            }
+        }
     }
 
     // MARK: - Footer / misc
@@ -561,7 +670,15 @@ struct SnapshotEditorView: View {
             }
             Spacer()
             GhostButton(action: { dismiss() }) { Text("Close") }
-            if !snapshot.isLocked {
+            if snapshot.isLocked {
+                PrimaryButton(action: { confirmingUnlock = true }) {
+                    HStack(spacing: 5) {
+                        Image(systemName: "lock.open.fill").font(.system(size: 10, weight: .bold))
+                        Text("Unlock Snapshot")
+                    }
+                }
+                .help("Unlock to amend values, then re-lock when done.")
+            } else {
                 GhostButton(action: { saveDraft(dismissAfter: false) }) {
                     HStack(spacing: 5) {
                         Image(systemName: "square.and.arrow.down").font(.system(size: 10, weight: .bold))

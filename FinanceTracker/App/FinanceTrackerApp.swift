@@ -6,6 +6,12 @@ struct FinanceTrackerApp: App {
     let container: ModelContainer
     @StateObject private var app = AppState()
     @StateObject private var undo = UndoStash()
+    @StateObject private var lockGate: AppLockGate = {
+        // Default to ON when key absent — matches AppState's AppStorage default.
+        let defaults = UserDefaults.standard
+        let locked = defaults.object(forKey: "requireAppLock") as? Bool ?? true
+        return AppLockGate(initiallyLocked: locked)
+    }()
     @NSApplicationDelegateAdaptor(QuitBackupDelegate.self) private var quitDelegate
 
     init() {
@@ -29,18 +35,37 @@ struct FinanceTrackerApp: App {
         }
         _ = BackupService.runIfDue()
         ReminderScheduler.check(context: container.mainContext)
+        DispatchQueue.main.async { [container] in
+            let raw = UserDefaults.standard.string(forKey: "appIconChoice") ?? AppIconChoice.ledgerly.rawValue
+            AppIconSwitcher.apply(AppIconChoice(rawValue: raw) ?? .ledgerly)
+            MenuBarController.shared.attach(container: container)
+            let mb = UserDefaults.standard.object(forKey: "menuBarEnabled") as? Bool ?? false
+            MenuBarController.shared.setEnabled(mb)
+        }
     }
 
     var body: some Scene {
         WindowGroup {
-            RootView()
-                .environmentObject(app)
-                .environmentObject(undo)
-                .preferredColorScheme(app.preferredColorScheme)
-                .onChange(of: app.theme) { _, newTheme in
-                    applyWindowAppearance(newTheme)
+            ZStack {
+                RootView()
+                    .environmentObject(app)
+                    .environmentObject(undo)
+                    .environmentObject(lockGate)
+                    .preferredColorScheme(app.preferredColorScheme)
+                    .onChange(of: app.theme) { _, newTheme in
+                        applyWindowAppearance(newTheme)
+                    }
+                    .onAppear { applyWindowAppearance(app.theme) }
+                    .blur(radius: lockGate.isLocked ? 18 : 0)
+                    .allowsHitTesting(!lockGate.isLocked)
+                if lockGate.isLocked {
+                    LockScreen(gate: lockGate)
+                        .environmentObject(app)
+                        .transition(.opacity)
+                        .zIndex(10_000)
                 }
-                .onAppear { applyWindowAppearance(app.theme) }
+            }
+            .animation(.easeInOut(duration: 0.18), value: lockGate.isLocked)
         }
         .modelContainer(container)
         .defaultSize(width: 1400, height: 1000)

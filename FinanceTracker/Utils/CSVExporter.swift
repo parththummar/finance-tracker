@@ -72,7 +72,7 @@ enum CSVExporter {
     static func accounts(_ accounts: [Account]) -> String {
         let header = ["name", "person", "country_code", "country_name",
                       "asset_type", "category", "native_currency",
-                      "institution", "notes", "active"]
+                      "institution", "notes", "active", "cost_basis_native"]
         var rows: [[String]] = [header]
         for a in accounts.sorted(by: { $0.name < $1.name }) {
             rows.append([
@@ -85,7 +85,8 @@ enum CSVExporter {
                 a.nativeCurrency.rawValue,
                 a.institution,
                 a.notes,
-                a.isActive ? "true" : "false"
+                a.isActive ? "true" : "false",
+                a.costBasis == 0 ? "" : String(a.costBasis)
             ])
         }
         return encode(rows: rows)

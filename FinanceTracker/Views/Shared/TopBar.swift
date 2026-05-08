@@ -23,9 +23,7 @@ struct TopBar: View {
 
             GlobalSearchField()
 
-            if !snapshots.isEmpty {
-                snapshotChip
-            }
+            snapshotChip
 
             SegControl<Currency>(
                 options: Currency.allCases.map { (label: $0.rawValue, value: $0) },
@@ -96,44 +94,98 @@ struct TopBar: View {
                 .font(Typo.sans(12))
                 .foregroundStyle(Color.lInk3)
                 .lineLimit(1)
-            Text("/")
-                .font(Typo.sans(12))
+            Image(systemName: "chevron.right")
+                .font(.system(size: 8, weight: .bold))
                 .foregroundStyle(Color.lInk4)
             Text(screenTitle)
                 .font(Typo.sans(12, weight: .semibold))
                 .foregroundStyle(Color.lInk)
                 .lineLimit(1)
+            if let filter = activeFilterLabel {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(Color.lInk4)
+                Text(filter)
+                    .font(Typo.sans(12, weight: .medium))
+                    .foregroundStyle(Color.lInk2)
+                    .lineLimit(1)
+            }
+            if let snap = activeSnapshotCrumb {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(Color.lInk4)
+                Text(snap)
+                    .font(Typo.mono(11, weight: .medium))
+                    .foregroundStyle(Color.lInk3)
+                    .lineLimit(1)
+            }
         }
         .fixedSize()
     }
 
+    private var activeFilterLabel: String? {
+        guard app.selectedScreen == .breakdown,
+              let filter = app.pendingBreakdownFilter else { return nil }
+        return "\(filter.key.rawValue): \(filter.label)"
+    }
+
+    private var activeSnapshotCrumb: String? {
+        // Show snapshot context only on data screens where it actually drives values.
+        let screensWithSnapshot: Set<Screen> = [.dashboard, .breakdown, .trends, .reports]
+        guard screensWithSnapshot.contains(app.selectedScreen),
+              let id = app.activeSnapshotID,
+              let s = snapshots.first(where: { $0.id == id }) else { return nil }
+        return s.label
+    }
+
+    @ViewBuilder
     private var snapshotChip: some View {
-        HStack(spacing: 6) {
-            Text("As of")
-                .font(Typo.mono(10.5))
-                .foregroundStyle(Color.lInk3)
-            Menu {
-                ForEach(snapshots) { s in
-                    Button(s.label) { app.activeSnapshotID = s.id }
-                }
-            } label: {
-                HStack(spacing: 4) {
-                    Text(activeLabel)
-                        .font(Typo.mono(11, weight: .semibold))
-                        .foregroundStyle(Color.lInk)
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 8, weight: .bold))
-                        .foregroundStyle(Color.lInk3)
-                }
+        if snapshots.isEmpty {
+            HStack(spacing: 6) {
+                Image(systemName: "calendar.badge.exclamationmark")
+                    .font(.system(size: 10))
+                    .foregroundStyle(Color.lInk3)
+                Text("No snapshot")
+                    .font(Typo.mono(11, weight: .semibold))
+                    .foregroundStyle(Color.lInk3)
             }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .fixedSize()
-            .pointerStyle(.link)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .overlay(Capsule().stroke(Color.lLine, lineWidth: 1))
+            .help("Create a snapshot to start tracking.")
+        } else {
+            HStack(spacing: 6) {
+                Image(systemName: "calendar")
+                    .font(.system(size: 10))
+                    .foregroundStyle(Color.lInk3)
+                Text("As of")
+                    .font(Typo.mono(10.5))
+                    .foregroundStyle(Color.lInk3)
+                Menu {
+                    ForEach(snapshots) { s in
+                        Button(s.label) { app.activeSnapshotID = s.id }
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Text(activeLabel)
+                            .font(Typo.mono(11, weight: .semibold))
+                            .foregroundStyle(Color.lInk)
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundStyle(Color.lInk3)
+                    }
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .pointerStyle(.link)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(Capsule().fill(Color.lInk.opacity(0.04)))
+            .overlay(Capsule().stroke(Color.lLine, lineWidth: 1))
+            .help("Active snapshot — drives Dashboard, Breakdown, Trends. Click to switch.")
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 5)
-        .overlay(Capsule().stroke(Color.lLine, lineWidth: 1))
     }
 
     private var activeLabel: String {

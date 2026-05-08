@@ -85,13 +85,15 @@ struct TrendsView: View {
                     cta: {
                         app.newSnapshotRequested = true
                         app.selectedScreen = .snapshots
-                    }
+                    },
+                    illustration: "waveform.path.ecg"
                 )
             } else {
                 VStack(alignment: .leading, spacing: 20) {
                     header
                     kpiRow
                     Panel { chartSection }
+                    forecastPanel
                     Panel { tableSection }
                 }
             }
@@ -384,6 +386,125 @@ struct TrendsView: View {
         }
     }
 
+    private var forecastPanel: some View {
+        let history = cachedSnapshotTotals.map { ($0.date, $0.total) }
+        let goal = goalDisplay()
+        let result = Forecast.compute(history: history,
+                                      method: app.forecastMethod,
+                                      horizonMonths: 24,
+                                      goal: goal)
+        return Panel {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text("Forecast")
+                        .font(Typo.sans(14, weight: .semibold))
+                        .foregroundStyle(Color.lInk)
+                    if let cagr = result?.cagrPct {
+                        Text("CAGR \(String(format: "%.1f", cagr))% / yr")
+                            .font(Typo.mono(11))
+                            .foregroundStyle(Color.lInk3)
+                    } else if let m = result?.slopePerDay {
+                        Text("Slope \(Fmt.compact(m * 30, app.displayCurrency))/mo")
+                            .font(Typo.mono(11))
+                            .foregroundStyle(Color.lInk3)
+                    }
+                    Spacer()
+                    SegControl<ForecastMethod>(
+                        options: ForecastMethod.allCases.map { ($0.label, $0) },
+                        selection: Binding(
+                            get: { app.forecastMethod },
+                            set: { app.forecastMethod = $0 }
+                        )
+                    )
+                }
+                .padding(.horizontal, 18).padding(.top, 14).padding(.bottom, 10)
+                Divider().overlay(Color.lLine)
+                Group {
+                    if let r = result {
+                        forecastChart(r)
+                    } else {
+                        Text("Need at least 2 snapshots for projection.")
+                            .font(Typo.serifItalic(12))
+                            .foregroundStyle(Color.lInk3)
+                            .padding(18)
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func forecastChart(_ r: Forecast.Result) -> some View {
+        Chart {
+            // Confidence band on projection
+            ForEach(r.projection) { p in
+                AreaMark(x: .value("Date", p.date),
+                         yStart: .value("Lower", p.lower),
+                         yEnd: .value("Upper", p.upper))
+                    .foregroundStyle(Color.lInk.opacity(0.10))
+                    .interpolationMethod(.monotone)
+            }
+            // Historical actuals
+            ForEach(Array(r.history.enumerated()), id: \.offset) { _, h in
+                LineMark(x: .value("Date", h.date),
+                         y: .value("Value", h.value))
+                    .foregroundStyle(Color.lInk)
+                    .lineStyle(StrokeStyle(lineWidth: 1.6, lineCap: .round, lineJoin: .round))
+                    .interpolationMethod(.monotone)
+                PointMark(x: .value("Date", h.date),
+                          y: .value("Value", h.value))
+                    .foregroundStyle(Color.lInk)
+                    .symbolSize(20)
+            }
+            // Projection line (dashed)
+            ForEach(r.projection) { p in
+                LineMark(x: .value("Date", p.date),
+                         y: .value("Value", p.value))
+                    .foregroundStyle(Color.lInk2)
+                    .lineStyle(StrokeStyle(lineWidth: 1.4, lineCap: .round, dash: [4, 4]))
+                    .interpolationMethod(.monotone)
+            }
+            // Goal rule
+            if let goal = goalDisplay(), goal > 0 {
+                RuleMark(y: .value("Goal", goal))
+                    .foregroundStyle(Color.lGain.opacity(0.7))
+                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                    .annotation(position: .top, alignment: .trailing) {
+                        Text("Goal · \(Fmt.compact(goal, app.displayCurrency))")
+                            .font(Typo.mono(10))
+                            .foregroundStyle(Color.lGain)
+                    }
+            }
+            // ETA marker
+            if let eta = r.etaForGoal {
+                RuleMark(x: .value("ETA", eta))
+                    .foregroundStyle(Color.lGain.opacity(0.6))
+                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [2, 3]))
+                    .annotation(position: .top, alignment: .leading) {
+                        let f = DateFormatter(); f.dateFormat = "MMM yyyy"
+                        return Text("ETA \(f.string(from: eta))")
+                            .font(Typo.mono(10, weight: .semibold))
+                            .foregroundStyle(Color.lGain)
+                    }
+            }
+        }
+        .chartYAxis {
+            AxisMarks(position: .leading) { _ in
+                AxisGridLine().foregroundStyle(Color.lLine.opacity(0.4))
+                AxisValueLabel().font(Typo.mono(10)).foregroundStyle(Color.lInk3)
+            }
+        }
+        .chartXAxis {
+            AxisMarks { _ in
+                AxisGridLine().foregroundStyle(Color.lLine.opacity(0.3))
+                AxisValueLabel(format: .dateTime.month(.abbreviated).year(.twoDigits))
+                    .font(Typo.mono(10)).foregroundStyle(Color.lInk3)
+            }
+        }
+        .frame(height: 260)
+        .padding(18)
+    }
+
     private func goalDisplay() -> Double? {
         guard app.netWorthGoal > 0 else { return nil }
         let rate = snapshots.first?.usdToInrRate ?? 1
@@ -660,7 +781,7 @@ struct TrendsView: View {
 
         var totals: [SnapshotTotal] = []
         for s in snaps {
-            let t = s.values
+            let t = s.totalsValues
                 .filter(passesFilters)
                 .reduce(0.0) { $0 + CurrencyConverter.netDisplayValue(for: $1, in: target, includeIlliquid: inc) }
             totals.append(SnapshotTotal(snapshotID: s.id, date: s.date, label: s.label, total: t))
@@ -713,7 +834,7 @@ struct TrendsView: View {
             var bucket: [String: Double] = [:]
             var colorByLabel: [String: Color] = [:]
 
-            for v in s.values where passesFilters(v) {
+            for v in s.totalsValues where passesFilters(v) {
                 guard let acc = v.account else { continue }
                 if !inc && (acc.assetType?.category.isIlliquid ?? false) { continue }
                 let (label, color) = seriesKey(for: acc)

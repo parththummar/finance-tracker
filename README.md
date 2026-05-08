@@ -10,18 +10,20 @@ Supports multiple people, countries, and currencies (notably **USD** and **INR**
 
 | Area | What it does |
 |------|----------------|
-| **Dashboard** | Headline net worth, QoQ/YoY hints, sparkline, distribution cards (person / country / category), movers, net worth history |
-| **Allocation (Breakdown)** | Stacked bars view, filters, accounts table with % of total |
-| **Trends** | Time-series views for exploring change across snapshots |
-| **Snapshots** | List, create, lock/unlock, edit per-account values with live totals and deltas vs previous snapshot |
-| **Diff** (`⌘⇧D`) | Snapshot diff between two dates |
-| **Reports** | Printable / export-oriented reporting flows |
-| **Manage** | CRUD for people, countries, asset types, **accounts**, and **receivables** (money owed to you) |
-| **Settings** | Display currency, theme, labels, colors, CSV/PDF paths, backups, reminders, database path |
+| **Dashboard** | Hero net worth with embedded sparkline + inline delta chip, compare bar (vs Previous / Year ago), customizable widgets, Goal progress + ETA, Liquidity / runway, KPI cards, allocation breakdowns, movers, history |
+| **Allocation (Breakdown)** | Treemap, stacked bars, filters, accounts table with % of total; cross-link from Dashboard slices |
+| **Trends** | Time-series with hover tooltips, range filters, **forecast panel** (Linear / CAGR with ±1σ band) |
+| **Snapshots** | List, create, lock/unlock, edit per-account values with live totals and deltas; **completeness badge**, **pinned snapshot tabs**, missing-row highlights, stale-account flag |
+| **Diff** (`⌘⇧D`) | Snapshot diff between two dates, with **Money Flow** Sankey visual of where value moved per account |
+| **Reports** | Period compare, **QoQ heatmap** (quarters × categories), CAGR & monthly drift, asset-type drilldown |
+| **Manage** | Inline-edit grids for **people** (name, color, "In NW" toggle, quick-add row), countries, asset types, **accounts** (with optional cost basis + Unrealized column), and **receivables** (money owed to you, with start dates) |
+| **Settings** | Display, **App icon** picker (Ledgerly · Classic · Vault · Strata), **Dashboard widgets** show/hide/reorder, category colors, FX, backups, reminders, **Security** (App lock + Stealth mode + Menu bar item) |
+| **Productivity** | **⌘K command palette**, **recently viewed** list, search jumps directly into editors, three-level breadcrumb |
+| **Privacy** | **App lock** on launch (Touch ID / Apple Watch / system password), **Stealth mode** to blur amounts |
 
 **FX**: Live **USD→INR** fetch via [frankfurter.app](https://www.frankfurter.app/) (no API key). Rates can be pinned per snapshot; locked snapshots are not rewritten.
 
-**Data safety**: Manual and automatic SQLite backups, optional restore on launch, quit-time backup hook.
+**Data safety**: Manual and automatic SQLite backups, optional restore on launch, quit-time backup hook, snapshot pre-caching for fast renders.
 
 ---
 

@@ -19,6 +19,7 @@ struct AccountEditorSheet: View {
     @State private var institution: String = ""
     @State private var notes: String = ""
     @State private var isActive: Bool = true
+    @State private var costBasis: Double = 0
     @State private var errorMessage: String?
     @State private var savedToast: String?
     @State private var showUnsavedConfirm = false
@@ -33,6 +34,7 @@ struct AccountEditorSheet: View {
         var institution: String = ""
         var notes: String = ""
         var isActive: Bool = true
+        var costBasis: Double = 0
     }
 
     @AppStorage("acct.lastPersonID")    private var lastPersonIDStr: String = ""
@@ -44,7 +46,8 @@ struct AccountEditorSheet: View {
     private var currentSnapshot: FormSnapshot {
         FormSnapshot(name: name, personID: personID, countryID: countryID,
                  assetTypeID: assetTypeID, nativeCurrency: nativeCurrency,
-                 institution: institution, notes: notes, isActive: isActive)
+                 institution: institution, notes: notes, isActive: isActive,
+                 costBasis: costBasis)
     }
 
     private var hasChanges: Bool { currentSnapshot != initialSnapshot }
@@ -97,6 +100,17 @@ struct AccountEditorSheet: View {
                 TextField("Institution (optional)", text: $institution)
                 TextField("Notes (optional)", text: $notes)
 
+                LabeledContent("Cost basis (optional)") {
+                    HStack(spacing: 6) {
+                        TextField("0", value: $costBasis, format: .number)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 140)
+                        Text(nativeCurrency.rawValue)
+                            .font(Typo.mono(11))
+                            .foregroundStyle(Color.lInk3)
+                    }
+                }
+
                 Toggle("Active", isOn: $isActive)
             }
             .formStyle(.grouped)
@@ -145,6 +159,7 @@ struct AccountEditorSheet: View {
         .animation(.easeInOut(duration: 0.2), value: savedToast)
         .confirmationDialog("Save changes before closing?", isPresented: $showUnsavedConfirm) {
             Button("Save") { save(continueAdding: false) }
+                .keyboardShortcut(.defaultAction)
             Button("Discard", role: .destructive) { dismiss() }
             Button("Cancel", role: .cancel) {}
         }
@@ -175,6 +190,7 @@ struct AccountEditorSheet: View {
             institution = a.institution
             notes = a.notes
             isActive = a.isActive
+            costBasis = a.costBasis
             return
         }
         // New account: prefill from last-saved.
@@ -214,10 +230,12 @@ struct AccountEditorSheet: View {
             a.institution = institution
             a.notes = notes
             a.isActive = isActive
+            a.costBasis = max(0, costBasis)
         } else {
             let a = Account(name: trimmed, person: p, country: c, assetType: t,
                             nativeCurrency: nativeCurrency, institution: institution,
                             notes: notes, isActive: isActive)
+            a.costBasis = max(0, costBasis)
             context.insert(a)
         }
 

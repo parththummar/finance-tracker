@@ -2,6 +2,7 @@ import SwiftUI
 import SwiftData
 
 struct AssetTypesView: View {
+    @EnvironmentObject var app: AppState
     @Environment(\.modelContext) private var context
     @Query(sort: \AssetType.name) private var types: [AssetType]
     @State private var editing: AssetType?
@@ -27,7 +28,8 @@ struct AssetTypesView: View {
                     body: "Asset types classify what each account holds — cash, equities, real estate, crypto, debt. They drive every category breakdown in the app.",
                     detail: "Each type belongs to a category: Cash · Investment · Retirement · Insurance · Crypto · Debt · Other.",
                     ctaLabel: "New Type",
-                    cta: { creatingNew = true }
+                    cta: { creatingNew = true },
+                    illustration: "square.stack.3d.up"
                 )
             } else {
                 tablePanel
@@ -43,10 +45,20 @@ struct AssetTypesView: View {
                 if let t = confirmDelete { context.delete(t); try? context.save() }
                 confirmDelete = nil
             }
+            .keyboardShortcut(.defaultAction)
             Button("Cancel", role: .cancel) { confirmDelete = nil }
         } message: {
             Text("Asset type, all \(confirmDelete?.accounts.count ?? 0) accounts using it, and their historical values will be deleted. Cannot be undone.")
         }
+        .onAppear { consumePendingFocus() }
+        .onChange(of: app.pendingFocusAssetTypeID) { _, _ in consumePendingFocus() }
+    }
+
+    private func consumePendingFocus() {
+        guard let id = app.pendingFocusAssetTypeID,
+              let t = types.first(where: { $0.id == id }) else { return }
+        editing = t
+        app.pendingFocusAssetTypeID = nil
     }
 
     private var header: some View {

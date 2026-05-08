@@ -19,6 +19,11 @@ struct DashboardView: View {
     @State private var cachedDebt: Double = 0
     @State private var cachedPrevLiquid: Double = 0
     @State private var cachedPrevInvested: Double = 0
+    @State private var cachedYaLiquid: Double = 0
+    @State private var cachedYaInvested: Double = 0
+    @State private var cachedYaRetirement: Double = 0
+    @State private var cachedYaInsurance: Double = 0
+    @State private var cachedYaDebt: Double = 0
     @State private var cachedPrevRetirement: Double = 0
     @State private var cachedPrevInsurance: Double = 0
     @State private var cachedPrevDebt: Double = 0
@@ -50,6 +55,35 @@ struct DashboardView: View {
         let val: Double
     }
 
+    private var visibleWidgets: [DashboardWidget] {
+        let hidden = app.dashboardWidgetsHidden
+        return app.dashboardWidgetOrder.filter { w in
+            if hidden.contains(w) { return false }
+            // Auto-hide widgets with no data to avoid empty cards.
+            switch w {
+            case .goal:        return app.netWorthGoal > 0
+            case .liabilities: return !cachedLiabilities.isEmpty
+            case .receivables: return hasReceivables
+            default:           return true
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func widgetView(_ w: DashboardWidget) -> some View {
+        switch w {
+        case .hero:        hero
+        case .digest:      digestPanel
+        case .goal:        goalProgressPanel
+        case .liquidity:   liquidityPanel
+        case .kpi:         kpiGrid
+        case .composition: composition
+        case .liabilities: liabilities
+        case .receivables: receivablesPanel
+        case .movers:      movers
+        }
+    }
+
     var body: some View {
         Group {
             if snapshots.isEmpty {
@@ -65,21 +99,14 @@ struct DashboardView: View {
                         app.selectedScreen = .snapshots
                     },
                     secondaryLabel: "Set up accounts first",
-                    secondary: { app.selectedScreen = .accounts }
+                    secondary: { app.selectedScreen = .accounts },
+                    illustration: "chart.bar.doc.horizontal"
                 )
             } else {
                 VStack(alignment: .leading, spacing: 28) {
-                    hero
-                    digestPanel
-                    kpiGrid
-                    composition
-                    if !cachedLiabilities.isEmpty {
-                        liabilities
+                    ForEach(visibleWidgets, id: \.self) { w in
+                        widgetView(w)
                     }
-                    if hasReceivables {
-                        receivablesPanel
-                    }
-                    movers
                 }
             }
         }
@@ -118,6 +145,12 @@ struct DashboardView: View {
         cachedPrevInsurance = sumCats(prev, [.insurance], target: target)
         cachedPrevDebt = sumCats(prev, [.debt], target: target)
 
+        cachedYaLiquid = sumCats(ya, [.cash], target: target)
+        cachedYaInvested = sumCats(ya, [.investment, .crypto], target: target)
+        cachedYaRetirement = sumCats(ya, [.retirement], target: target)
+        cachedYaInsurance = sumCats(ya, [.insurance], target: target)
+        cachedYaDebt = sumCats(ya, [.debt], target: target)
+
         cachedMovers = computeMovers(cur: cur, prev: prev, target: target)
         cachedTrajectory = sortedAsc.map { TrajectoryPoint(date: $0.date, val: total($0, target: target)) }
         cachedTargets = TargetAllocationStore.all()
@@ -126,12 +159,12 @@ struct DashboardView: View {
 
     private func computeLiabilities(cur: Snapshot?, prev: Snapshot?, target: Currency) -> [LiabilityRow] {
         guard let cur else { return [] }
-        let debts = cur.values.filter { $0.account?.assetType?.category == .debt }
+        let debts = cur.totalsValues.filter { $0.account?.assetType?.category == .debt }
         guard !debts.isEmpty else { return [] }
 
         var peak: [UUID: Double] = [:]
         for s in snapshots {
-            for v in s.values where v.account?.assetType?.category == .debt {
+            for v in s.totalsValues where v.account?.assetType?.category == .debt {
                 guard let id = v.account?.id else { continue }
                 let mag = abs(CurrencyConverter.displayValue(for: v, in: target))
                 peak[id] = max(peak[id] ?? 0, mag)
@@ -139,7 +172,7 @@ struct DashboardView: View {
         }
         var prevMap: [UUID: Double] = [:]
         if let prev {
-            for v in prev.values where v.account?.assetType?.category == .debt {
+            for v in prev.totalsValues where v.account?.assetType?.category == .debt {
                 guard let id = v.account?.id else { continue }
                 prevMap[id] = abs(CurrencyConverter.displayValue(for: v, in: target))
             }
@@ -165,12 +198,12 @@ struct DashboardView: View {
     private func total(_ s: Snapshot?, target: Currency) -> Double {
         guard let s else { return 0 }
         let inc = app.includeIlliquidInNetWorth
-        return s.values.reduce(0) { $0 + CurrencyConverter.netDisplayValue(for: $1, in: target, includeIlliquid: inc) }
+        return s.totalsValues.reduce(0) { $0 + CurrencyConverter.netDisplayValue(for: $1, in: target, includeIlliquid: inc) }
     }
 
     private func sumCats(_ s: Snapshot?, _ cats: [AssetCategory], target: Currency) -> Double {
         guard let s else { return 0 }
-        return s.values
+        return s.totalsValues
             .filter { v in cats.contains(where: { $0 == v.account?.assetType?.category }) }
             .reduce(0.0) { $0 + CurrencyConverter.displayValue(for: $1, in: target) }
     }
@@ -179,7 +212,7 @@ struct DashboardView: View {
         guard let s else { return [] }
         let inc = app.includeIlliquidInNetWorth
         var buckets: [String: (Double, Color)] = [:]
-        for v in s.values {
+        for v in s.totalsValues {
             guard let acc = v.account, let p = acc.person else { continue }
             let amt = CurrencyConverter.netDisplayValue(for: v, in: target, includeIlliquid: inc)
             let col = Color.fromHex(p.colorHex) ?? Palette.fallback(for: p.name)
@@ -196,7 +229,7 @@ struct DashboardView: View {
         guard let s else { return [] }
         let inc = app.includeIlliquidInNetWorth
         var buckets: [String: (Double, Color, String)] = [:]
-        for v in s.values {
+        for v in s.totalsValues {
             guard let acc = v.account, let c = acc.country else { continue }
             let amt = CurrencyConverter.netDisplayValue(for: v, in: target, includeIlliquid: inc)
             let key = "\(c.flag) \(c.name)"
@@ -214,7 +247,7 @@ struct DashboardView: View {
         guard let s else { return [] }
         let inc = app.includeIlliquidInNetWorth
         var buckets: [AssetCategory: Double] = [:]
-        for v in s.values {
+        for v in s.totalsValues {
             guard let acc = v.account, let t = acc.assetType else { continue }
             if !inc && t.category.isIlliquid { continue }
             buckets[t.category, default: 0] += CurrencyConverter.netDisplayValue(for: v, in: target)
@@ -229,12 +262,12 @@ struct DashboardView: View {
         guard let cur, let prev else { return [] }
         let inc = app.includeIlliquidInNetWorth
         var prevMap: [UUID: Double] = [:]
-        for v in prev.values where v.account != nil {
+        for v in prev.totalsValues where v.account != nil {
             if !inc && CurrencyConverter.isIlliquid(v) { continue }
             prevMap[v.account!.id] = CurrencyConverter.netDisplayValue(for: v, in: target)
         }
         var list: [MoverRow] = []
-        for v in cur.values {
+        for v in cur.totalsValues {
             guard let acc = v.account else { continue }
             if !inc && CurrencyConverter.isIlliquid(v) { continue }
             let now = CurrencyConverter.netDisplayValue(for: v, in: target)
@@ -297,61 +330,140 @@ struct DashboardView: View {
     // MARK: hero
 
     private var hero: some View {
-        HStack(alignment: .top, spacing: 40) {
-            VStack(alignment: .leading, spacing: 0) {
-                HStack(spacing: 8) {
-                    Circle().fill(Color.lInk).frame(width: 5, height: 5)
-                    Text("NET WORTH · \(activeSnapshot?.label ?? "—")")
-                        .font(Typo.eyebrow)
-                        .tracking(1.5)
-                        .foregroundStyle(Color.lInk3)
-                }
-                .padding(.bottom, 10)
+        VStack(alignment: .leading, spacing: 0) {
+            // Eyebrow + compare picker on same row.
+            HStack(spacing: 8) {
+                Circle().fill(Color.lInk).frame(width: 5, height: 5)
+                Text("NET WORTH · \(activeSnapshot?.label ?? "—")")
+                    .font(Typo.eyebrow)
+                    .tracking(1.5)
+                    .foregroundStyle(Color.lInk3)
+                Spacer(minLength: 0)
+                compareSegment
+            }
+            .padding(.bottom, 14)
 
+            // Oversized monospaced figure with inline delta chip.
+            HStack(alignment: .firstTextBaseline, spacing: 14) {
                 HStack(alignment: .top, spacing: 4) {
                     Text(app.displayCurrency.symbol)
                         .font(Typo.serifNum(56))
                         .foregroundStyle(Color.lInk3)
                         .padding(.top, 24)
-                    Text(Fmt.groupedInt(curTotal, locale: app.displayCurrency == .INR ? .init(identifier: "en_IN") : .init(identifier: "en_US")))
+                    Text(Fmt.groupedInt(curTotal,
+                                        locale: app.displayCurrency == .INR
+                                            ? .init(identifier: "en_IN")
+                                            : .init(identifier: "en_US")))
                         .font(Typo.serifNum(96))
                         .foregroundStyle(Color.lInk)
                         .monospacedDigit()
                         .tracking(-1.5)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
                 }
+                .stealthAmount()
 
-                if prevSnapshot != nil || yearAgoSnapshot != nil {
-                    HStack(spacing: 10) {
-                        if prevSnapshot != nil {
-                            HeroDelta(pct: pct(curTotal, prevTotal), suffix: "· \(Fmt.compact(curTotal - prevTotal, app.displayCurrency)) QoQ")
-                        }
-                        if yearAgoSnapshot != nil {
-                            HeroDelta(pct: pct(curTotal, yaTotal), suffix: "YoY")
-                        }
-                    }
-                    .padding(.top, 4)
-                }
+                inlineDeltaChip
+                    .stealthAmount()
 
-                if let s = activeSnapshot {
-                    Text(footnote(for: s))
-                        .font(Typo.serifItalic(13.5))
-                        .foregroundStyle(Color.lInk2)
-                        .lineSpacing(3)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: 520, alignment: .leading)
-                        .padding(.top, 22)
-                }
+                Spacer(minLength: 0)
             }
+            .padding(.bottom, 16)
 
-            Spacer(minLength: 0)
+            // Embedded sparkline — thin, full-width.
+            embeddedSparkline
+                .frame(height: 56)
+                .padding(.bottom, 14)
 
-            sparklinePanel
-                .frame(width: 320, height: 140)
+            if let s = activeSnapshot {
+                Text(footnote(for: s))
+                    .font(Typo.serifItalic(13))
+                    .foregroundStyle(Color.lInk2)
+                    .lineSpacing(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
-        .padding(28)
+        .padding(24)
         .background(Color.lPanel)
         .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.lLine, lineWidth: 1))
         .clipShape(RoundedRectangle(cornerRadius: 14))
+    }
+
+    @ViewBuilder
+    private var compareSegment: some View {
+        let opts: [(String, AppState.CompareMode)] =
+            AppState.CompareMode.allCases.map { ($0.label, $0) }
+        SegControl(
+            options: opts,
+            selection: Binding(
+                get: { app.dashboardCompareMode },
+                set: { app.dashboardCompareMode = $0 }
+            )
+        )
+    }
+
+    private var compareReferenceTotal: Double? {
+        switch app.dashboardCompareMode {
+        case .previous: return prevSnapshot != nil ? cachedPrevTotal : nil
+        case .yearAgo:  return yearAgoSnapshot != nil ? cachedYaTotal : nil
+        }
+    }
+
+    @ViewBuilder
+    private var inlineDeltaChip: some View {
+        if let ref = compareReferenceTotal {
+            let delta = curTotal - ref
+            let p = ref == 0 ? 0 : delta / abs(ref) * 100
+            let up = delta >= 0
+            HStack(spacing: 6) {
+                Image(systemName: up ? "arrow.up.right" : "arrow.down.right")
+                    .font(.system(size: 11, weight: .bold))
+                Text("\(up ? "+" : "−")\(Fmt.compact(abs(delta), app.displayCurrency))")
+                    .font(Typo.mono(13, weight: .semibold))
+                    .monospacedDigit()
+                Text("\(up ? "+" : "−")\(String(format: "%.1f", abs(p)))%")
+                    .font(Typo.mono(11))
+                    .foregroundStyle(.secondary)
+                Text(app.dashboardCompareMode.shortLabel)
+                    .font(Typo.eyebrow).tracking(1.0)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 10).padding(.vertical, 6)
+            .foregroundStyle(up ? Color.lGain : Color.lLoss)
+            .background((up ? Color.lGain : Color.lLoss).opacity(0.10))
+            .overlay(Capsule().stroke((up ? Color.lGain : Color.lLoss).opacity(0.35), lineWidth: 1))
+            .clipShape(Capsule())
+        } else {
+            Text("No prior snapshot")
+                .font(Typo.eyebrow).tracking(1.0)
+                .foregroundStyle(Color.lInk3)
+                .padding(.horizontal, 10).padding(.vertical, 6)
+                .overlay(Capsule().stroke(Color.lLine, lineWidth: 1))
+                .clipShape(Capsule())
+        }
+    }
+
+    @ViewBuilder
+    private var embeddedSparkline: some View {
+        Chart(cachedTrajectory) { pt in
+            AreaMark(x: .value("Date", pt.date), y: .value("Val", pt.val))
+                .foregroundStyle(.linearGradient(
+                    colors: [Color.lInk.opacity(0.18), Color.lInk.opacity(0.02)],
+                    startPoint: .top, endPoint: .bottom))
+                .interpolationMethod(.catmullRom)
+            LineMark(x: .value("Date", pt.date), y: .value("Val", pt.val))
+                .foregroundStyle(Color.lInk)
+                .lineStyle(StrokeStyle(lineWidth: 1.4, lineCap: .round, lineJoin: .round))
+                .interpolationMethod(.catmullRom)
+            if let goal = goalDisplay() {
+                RuleMark(y: .value("Goal", goal))
+                    .foregroundStyle(Color.lGain.opacity(0.7))
+                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
+            }
+        }
+        .chartXAxis(.hidden)
+        .chartYAxis(.hidden)
     }
 
     @ViewBuilder
@@ -475,6 +587,209 @@ struct DashboardView: View {
         )
     }
 
+    /// Builds (date, displayTotal) tuples for trend-fitting on every snapshot,
+    /// converted to current display currency.
+    private func historyForFit() -> [(Date, Double)] {
+        let inc = app.includeIlliquidInNetWorth
+        return snapshots
+            .sorted { $0.date < $1.date }
+            .map { s in
+                let total = s.totalsValues.reduce(0.0) {
+                    $0 + CurrencyConverter.netDisplayValue(for: $1,
+                                                           in: app.displayCurrency,
+                                                           includeIlliquid: inc)
+                }
+                return (s.date, total)
+            }
+    }
+
+    @ViewBuilder
+    private var goalProgressPanel: some View {
+        let goal = goalDisplay() ?? 0
+        let cur = cachedCurTotal
+        let pct = goal > 0 ? min(1.0, max(0.0, cur / goal)) : 0
+        let remaining = max(0, goal - cur)
+        let cleared = cur >= goal
+        let history = historyForFit()
+        let forecast = Forecast.compute(history: history,
+                                        method: app.forecastMethod,
+                                        horizonMonths: 0,
+                                        goal: goal)
+        let trendETA = forecast?.etaForGoal
+        let target = app.netWorthGoalDate
+
+        Panel {
+            VStack(alignment: .leading, spacing: 14) {
+                PanelHead(title: "Goal",
+                          meta: cleared ? "Cleared" : "\(Fmt.compact(remaining, app.displayCurrency)) to go")
+
+                HStack(alignment: .firstTextBaseline) {
+                    Text(Fmt.compact(cur, app.displayCurrency))
+                        .font(Typo.serifNum(28))
+                        .foregroundStyle(Color.lInk)
+                        .stealthAmount()
+                    Text("/ \(Fmt.compact(goal, app.displayCurrency))")
+                        .font(Typo.mono(13))
+                        .foregroundStyle(Color.lInk3)
+                        .stealthAmount()
+                    Spacer()
+                    Text("\(String(format: "%.1f", pct * 100))%")
+                        .font(Typo.mono(13, weight: .semibold))
+                        .foregroundStyle(cleared ? Color.lGain : Color.lInk2)
+                }
+                .padding(.horizontal, 18)
+
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Color.lSunken)
+                        .frame(height: 8)
+                    GeometryReader { geo in
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(LinearGradient(
+                                colors: [Color.lGain, Color.lInk],
+                                startPoint: .leading, endPoint: .trailing))
+                            .frame(width: max(2, geo.size.width * pct), height: 8)
+                    }
+                    .frame(height: 8)
+                }
+                .padding(.horizontal, 18)
+
+                HStack(alignment: .top, spacing: 18) {
+                    goalStat(label: "Trend ETA",
+                             value: trendETA.map(formatDateLabel) ?? "—",
+                             sub: forecast.flatMap { f in
+                                 f.cagrPct.map { "\(String(format: "%.1f", $0))% / yr (CAGR)" }
+                                     ?? f.slopePerDay.map { "\(Fmt.compact($0 * 30, app.displayCurrency))/mo" }
+                             } ?? "Need ≥ 2 snapshots")
+                    if let target {
+                        goalStat(label: "Target date",
+                                 value: formatDateLabel(target),
+                                 sub: pacingNote(eta: trendETA, target: target))
+                    } else {
+                        goalStat(label: "Target date",
+                                 value: "—",
+                                 sub: "Set in Settings to track pacing")
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 18)
+                .padding(.bottom, 14)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func goalStat(label: String, value: String, sub: String) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(label)
+                .font(Typo.eyebrow).tracking(1.2)
+                .foregroundStyle(Color.lInk3)
+            Text(value)
+                .font(Typo.mono(13, weight: .semibold))
+                .foregroundStyle(Color.lInk)
+            Text(sub)
+                .font(Typo.sans(11))
+                .foregroundStyle(Color.lInk3)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    @ViewBuilder
+    private var liquidityPanel: some View {
+        if let r = LiquidityAnalysis.compute(snapshots: snapshots,
+                                             displayCurrency: app.displayCurrency,
+                                             includeIlliquid: app.includeIlliquidInNetWorth) {
+            Panel {
+                VStack(alignment: .leading, spacing: 0) {
+                    PanelHead(title: "Liquidity",
+                              meta: r.lookbackPairs > 0
+                                  ? "\(r.lookbackPairs) snapshot transitions"
+                                  : "needs ≥ 2 snapshots")
+                    HStack(alignment: .top, spacing: 18) {
+                        liquidityStat(label: "Cash on hand",
+                                      value: Fmt.compact(r.liquidNow, app.displayCurrency),
+                                      sub: "Sum of Cash-category accounts",
+                                      tint: .lInk,
+                                      blur: true)
+                        liquidityStat(label: "Monthly net",
+                                      value: r.monthlyChange == 0
+                                          ? "—"
+                                          : (r.monthlyChange > 0 ? "+" : "−")
+                                              + Fmt.compact(abs(r.monthlyChange), app.displayCurrency),
+                                      sub: r.monthlyChange >= 0
+                                          ? "Cash growing — no burn"
+                                          : "Avg monthly drop",
+                                      tint: r.monthlyChange >= 0 ? .lGain : .lLoss,
+                                      blur: true)
+                        liquidityStat(label: "Runway",
+                                      value: runwayLabel(r),
+                                      sub: r.monthsRunway == nil
+                                          ? "Burn = 0"
+                                          : "At current burn rate",
+                                      tint: runwayTint(r),
+                                      blur: false)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(18)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func liquidityStat(label: String, value: String, sub: String,
+                               tint: Color, blur: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label)
+                .font(Typo.eyebrow).tracking(1.2)
+                .foregroundStyle(Color.lInk3)
+            Group {
+                Text(value)
+                    .font(Typo.serifNum(22))
+                    .foregroundStyle(tint)
+                    .monospacedDigit()
+            }
+            .modifier(StealthIfNeeded(blur: blur))
+            Text(sub)
+                .font(Typo.sans(11))
+                .foregroundStyle(Color.lInk3)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(minWidth: 160, alignment: .leading)
+    }
+
+    private func runwayLabel(_ r: LiquidityAnalysis.Result) -> String {
+        guard let m = r.monthsRunway else { return "∞" }
+        if m >= 24 { return "\(Int(m / 12))y \(Int(m.truncatingRemainder(dividingBy: 12))) mo" }
+        return "\(Int(m.rounded())) mo"
+    }
+
+    private func runwayTint(_ r: LiquidityAnalysis.Result) -> Color {
+        guard let m = r.monthsRunway else { return .lGain }
+        if m < 3 { return .lLoss }
+        if m < 6 { return .lInk }
+        return .lGain
+    }
+
+    private func formatDateLabel(_ d: Date) -> String {
+        let f = DateFormatter()
+        f.dateFormat = "MMM yyyy"
+        return f.string(from: d)
+    }
+
+    private func pacingNote(eta: Date?, target: Date) -> String {
+        guard let eta else { return "Trend not enough data" }
+        let cal = Calendar.current
+        let months = cal.dateComponents([.month], from: target, to: eta).month ?? 0
+        if months <= 0 {
+            return "On track — \(abs(months)) mo ahead of target"
+        } else {
+            return "Behind — \(months) mo past target"
+        }
+    }
+
     private func footnote(for s: Snapshot) -> String {
         let accCount = Set(s.values.compactMap { $0.account?.id }).count
         let countries = Set(s.values.compactMap { $0.account?.country?.name }).count
@@ -485,10 +800,18 @@ struct DashboardView: View {
 
     // MARK: KPI grid
 
-    private func kpiDeltaText(cur: Double, prev: Double) -> String? {
-        guard prevSnapshot != nil, prev != 0 else { return nil }
-        let d = (cur - prev) / abs(prev) * 100
-        return "\(d >= 0 ? "+" : "−")\(String(format: "%.1f", abs(d)))% QoQ"
+    /// Reference total per current compare mode. nil when no prior snapshot.
+    private func kpiRef(prev: Double, ya: Double) -> Double? {
+        switch app.dashboardCompareMode {
+        case .previous: return prevSnapshot != nil ? prev : nil
+        case .yearAgo:  return yearAgoSnapshot != nil ? ya : nil
+        }
+    }
+
+    private func kpiDeltaText(cur: Double, ref: Double?) -> String? {
+        guard let r = ref, r != 0 else { return nil }
+        let d = (cur - r) / abs(r) * 100
+        return "\(d >= 0 ? "+" : "−")\(String(format: "%.1f", abs(d)))% \(app.dashboardCompareMode.shortLabel)"
     }
 
     private var kpiGrid: some View {
@@ -496,35 +819,40 @@ struct DashboardView: View {
             columns: Array(repeating: GridItem(.flexible(), spacing: 14), count: 4),
             spacing: 14
         ) {
+            let refLiquid    = kpiRef(prev: cachedPrevLiquid,    ya: cachedYaLiquid)
+            let refInvested  = kpiRef(prev: cachedPrevInvested,  ya: cachedYaInvested)
+            let refRetIns    = kpiRef(prev: cachedPrevRetirement + cachedPrevInsurance,
+                                       ya: cachedYaRetirement + cachedYaInsurance)
+            let refDebt      = kpiRef(prev: cachedPrevDebt,      ya: cachedYaDebt)
+
             KPICard(
                 label: "Liquid",
                 value: Fmt.compact(cachedLiquid, app.displayCurrency),
                 sub: "Cash + deposits",
-                deltaText: kpiDeltaText(cur: cachedLiquid, prev: cachedPrevLiquid),
-                deltaUp: cachedLiquid >= cachedPrevLiquid
+                deltaText: kpiDeltaText(cur: cachedLiquid, ref: refLiquid),
+                deltaUp: cachedLiquid >= (refLiquid ?? cachedLiquid)
             )
             KPICard(
                 label: "Invested",
                 value: Fmt.compact(cachedInvested, app.displayCurrency),
                 sub: "Equity + crypto",
-                deltaText: kpiDeltaText(cur: cachedInvested, prev: cachedPrevInvested),
-                deltaUp: cachedInvested >= cachedPrevInvested
+                deltaText: kpiDeltaText(cur: cachedInvested, ref: refInvested),
+                deltaUp: cachedInvested >= (refInvested ?? cachedInvested)
             )
             KPICard(
                 label: "Retirement",
                 value: Fmt.compact(cachedRetirement + cachedInsurance, app.displayCurrency),
                 sub: "401k · IRA · NPS · HSA",
-                deltaText: kpiDeltaText(cur: cachedRetirement + cachedInsurance,
-                                        prev: cachedPrevRetirement + cachedPrevInsurance),
-                deltaUp: (cachedRetirement + cachedInsurance) >= (cachedPrevRetirement + cachedPrevInsurance)
+                deltaText: kpiDeltaText(cur: cachedRetirement + cachedInsurance, ref: refRetIns),
+                deltaUp: (cachedRetirement + cachedInsurance) >= (refRetIns ?? (cachedRetirement + cachedInsurance))
             )
             KPICard(
                 label: "Debt",
                 value: Fmt.compact(abs(cachedDebt), app.displayCurrency),
                 sub: "Loans · credit",
                 valueColor: .lLoss,
-                deltaText: kpiDeltaText(cur: cachedDebt, prev: cachedPrevDebt),
-                deltaUp: cachedDebt >= cachedPrevDebt
+                deltaText: kpiDeltaText(cur: cachedDebt, ref: refDebt),
+                deltaUp: cachedDebt >= (refDebt ?? cachedDebt)
             )
         }
     }
@@ -658,6 +986,34 @@ struct DashboardView: View {
         return cachedTargets[cat]
     }
 
+    /// Hit-test a point against the donut. Returns the AllocItem under the
+    /// click, or nil if outside the ring. Used for tap-to-drilldown without
+    /// the noisy hover updates that `.chartAngleSelection` produces on macOS.
+    private func sectorAt(_ point: CGPoint, in size: CGSize, items: [AllocItem]) -> AllocItem? {
+        let center = CGPoint(x: size.width / 2, y: size.height / 2)
+        let dx = point.x - center.x
+        let dy = point.y - center.y
+        let r = sqrt(dx * dx + dy * dy)
+        let outer = min(size.width, size.height) / 2
+        let inner = outer * 0.66
+        guard r >= inner && r <= outer else { return nil }
+
+        // SwiftUI Charts SectorMark draws clockwise from 12 o'clock.
+        var theta = atan2(dx, -dy)
+        if theta < 0 { theta += 2 * .pi }
+
+        let total = items.reduce(0.0) { $0 + abs($1.value) }
+        guard total > 0 else { return nil }
+        let target = theta / (2 * .pi) * total
+
+        var cum = 0.0
+        for it in items where abs(it.value) > 0 {
+            cum += abs(it.value)
+            if target <= cum { return it }
+        }
+        return items.last
+    }
+
     @ViewBuilder
     private func donutPanel(items: [AllocItem], total: Double) -> some View {
         VStack(spacing: 14) {
@@ -672,6 +1028,18 @@ struct DashboardView: View {
                     .cornerRadius(2)
                 }
                 .frame(width: 180, height: 180)
+                .chartOverlay { _ in
+                    GeometryReader { geo in
+                        Rectangle()
+                            .fill(Color.clear)
+                            .contentShape(Rectangle())
+                            .onTapGesture { loc in
+                                if let hit = sectorAt(loc, in: geo.size, items: items) {
+                                    openBreakdown(hit)
+                                }
+                            }
+                    }
+                }
                 VStack(spacing: 4) {
                     Text("TOTAL")
                         .font(Typo.sans(10, weight: .medium))
@@ -681,6 +1049,7 @@ struct DashboardView: View {
                         .font(Typo.serifNum(26))
                         .foregroundStyle(Color.lInk)
                         .monospacedDigit()
+                        .stealthAmount()
                 }
             }
             .padding(.top, 14)
