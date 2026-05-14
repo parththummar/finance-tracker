@@ -53,6 +53,7 @@ final class AppState: ObservableObject {
     @AppStorage("stealthMode") var stealthMode: Bool = false
     @AppStorage("sidebarWidth") var sidebarWidth: Double = 220
     @AppStorage("sidebarLastExpandedWidth") var sidebarLastExpandedWidth: Double = 220
+    @AppStorage("iconOnlySidebar") var iconOnlySidebar: Bool = false
     @AppStorage("dashboardWidgetOrder") var dashboardWidgetOrderRaw: String = ""
     @AppStorage("dashboardWidgetsHidden") var dashboardWidgetsHiddenRaw: String = ""
     @AppStorage("menuBarEnabled") var menuBarEnabled: Bool = false

@@ -18,22 +18,11 @@ struct Sidebar: View {
         return s
     }
 
-    /// Below this width → icon-only mode with hover tooltips.
-    static let collapseThreshold: CGFloat = 140
-    static let minWidth: CGFloat = 56
-    static let maxWidth: CGFloat = 320
-
-    @State private var dragStartWidth: Double?
-    @State private var liveWidth: Double?
-
-    private var effectiveWidth: Double { liveWidth ?? app.sidebarWidth }
-    private var collapsed: Bool { effectiveWidth < Self.collapseThreshold }
-
-    private struct NavItem: Identifiable {
-        let id = UUID()
+    private struct NavItem: Identifiable, Hashable {
         let screen: Screen
         let label: String
         let icon: String
+        var id: Screen { screen }
     }
     private struct NavGroup { let section: String; let items: [NavItem] }
 
@@ -57,220 +46,152 @@ struct Sidebar: View {
         ]),
     ]
 
+    private let settingsItem = NavItem(screen: .settings, label: "Settings", icon: "gearshape")
+
+    private var selection: Binding<Screen?> {
+        Binding(
+            get: { app.selectedScreen },
+            set: { if let v = $0 { app.selectedScreen = v } }
+        )
+    }
+
     var body: some View {
-        HStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 0) {
-                if collapsed {
-                    VStack(spacing: 8) {
-                        brand
-                        collapseToggle
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.horizontal, 4)
-                    .padding(.top, 18)
-                    .padding(.bottom, 16)
-                } else {
-                    HStack(spacing: 8) {
-                        brand
-                        Spacer(minLength: 0)
-                        collapseToggle
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.top, 20)
-                    .padding(.bottom, 22)
-                }
-
-                ScrollView(.vertical, showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: collapsed ? 8 : 18) {
-                        ForEach(Array(groups.enumerated()), id: \.offset) { _, g in
-                            VStack(alignment: .leading, spacing: 2) {
-                                if !collapsed {
-                                    Text(g.section)
-                                        .font(Typo.eyebrow)
-                                        .textCase(.uppercase)
-                                        .tracking(1.5)
-                                        .foregroundStyle(Color.lInk4)
-                                        .padding(.horizontal, 18)
-                                        .padding(.bottom, 4)
-                                } else {
-                                    Rectangle().fill(Color.lLine.opacity(0.4))
-                                        .frame(height: 1)
-                                        .padding(.horizontal, 14)
-                                        .padding(.vertical, 4)
-                                }
-                                ForEach(g.items) { item in
-                                    navRow(item)
-                                }
-                            }
-                        }
-                    }
-                    .padding(.vertical, 4)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-
-                Spacer(minLength: 0)
-
-                if !collapsed {
-                    recentSection
-                }
-
-                navRow(NavItem(screen: .settings, label: "Settings", icon: "gearshape"))
-                    .padding(.bottom, 14)
-            }
-            .frame(width: max(Double(Self.minWidth), effectiveWidth - 6),
-                   alignment: .leading)
-            .background(Color.lBg2)
-            .clipped()
-
-            // Drag handle
-            resizeHandle
+        if app.iconOnlySidebar {
+            iconOnlyBody
+        } else {
+            fullBody
         }
-        .frame(width: effectiveWidth)
-        .clipped()
-        .overlay(Rectangle().frame(width: 1).foregroundStyle(Color.lLine), alignment: .trailing)
     }
 
-    private var resizeHandle: some View {
-        Rectangle()
-            .fill(Color.clear)
-            .frame(width: 6)
-            .contentShape(Rectangle())
-            .onHover { inside in
-                if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
-            }
-            .gesture(
-                DragGesture(minimumDistance: 0, coordinateSpace: .local)
-                    .onChanged { gesture in
-                        // Drive live updates via local @State so AppStorage
-                        // (which writes to disk on every change) isn't pounded
-                        // 60×/sec. Persist on release.
-                        let base = dragStartWidth ?? app.sidebarWidth
-                        if dragStartWidth == nil { dragStartWidth = base }
-                        let raw = base + Double(gesture.translation.width)
-                        let clamped = max(Double(Self.minWidth),
-                                          min(Double(Self.maxWidth), raw))
-                        liveWidth = clamped
-                    }
-                    .onEnded { _ in
-                        let raw = liveWidth ?? app.sidebarWidth
-                        let snapped: Double
-                        if raw < 100 { snapped = Double(Self.minWidth) }
-                        else if raw < Double(Self.collapseThreshold) { snapped = Double(Self.collapseThreshold) }
-                        else { snapped = raw }
-                        withAnimation(.easeOut(duration: 0.15)) {
-                            liveWidth = snapped
-                        }
-                        // Persist after the animation lands.
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.16) {
-                            app.sidebarWidth = snapped
-                            if snapped >= Double(Self.collapseThreshold) {
-                                app.sidebarLastExpandedWidth = snapped
-                            }
-                            liveWidth = nil
-                            dragStartWidth = nil
-                        }
-                    }
-            )
-    }
+    // MARK: Full
 
-    private var collapseToggle: some View {
-        Button {
-            withAnimation(.easeInOut(duration: 0.18)) {
-                if collapsed {
-                    let restore = max(Double(Self.collapseThreshold),
-                                      app.sidebarLastExpandedWidth)
-                    app.sidebarWidth = restore
-                } else {
-                    app.sidebarLastExpandedWidth = app.sidebarWidth
-                    app.sidebarWidth = Double(Self.minWidth)
+    private var fullBody: some View {
+        List(selection: selection) {
+            ForEach(groups, id: \.section) { g in
+                Section(g.section) {
+                    ForEach(g.items) { item in
+                        Label(item.label, systemImage: item.icon)
+                            .tag(item.screen)
+                    }
                 }
             }
+
+            let recents = app.recentItems
+            if !recents.isEmpty {
+                Section {
+                    let alive = liveIDs
+                    ForEach(recents) { item in
+                        recentRow(item, isDeleted: !alive.contains(item.entityID))
+                    }
+                } header: {
+                    HStack {
+                        Text("Recent")
+                        Spacer()
+                        Button {
+                            app.recentItemsRaw = ""
+                            app.objectWillChange.send()
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 8, weight: .bold))
+                                .foregroundStyle(Color.lInk4)
+                        }
+                        .buttonStyle(.plain)
+                        .pointerStyle(.link)
+                        .help("Clear recent")
+                    }
+                }
+            }
+
+            Section {
+                Label(settingsItem.label, systemImage: settingsItem.icon)
+                    .tag(settingsItem.screen)
+            }
+        }
+        .listStyle(.sidebar)
+    }
+
+    // MARK: Icon-only
+
+    private var iconOnlyBody: some View {
+        VStack(spacing: 14) {
+            Spacer().frame(height: 4)
+            ForEach(Array(groups.enumerated()), id: \.offset) { idx, g in
+                if idx > 0 {
+                    Divider().padding(.horizontal, 8)
+                }
+                ForEach(g.items) { item in
+                    iconButton(item)
+                }
+            }
+
+            Spacer(minLength: 0)
+
+            Divider().padding(.horizontal, 8)
+            iconButton(settingsItem)
+                .padding(.bottom, 12)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(.bar)
+    }
+
+    private func iconButton(_ item: NavItem) -> some View {
+        let active = app.selectedScreen == item.screen
+        return Button {
+            app.selectedScreen = item.screen
         } label: {
-            Image(systemName: collapsed
-                  ? "chevron.right.2"
-                  : "sidebar.left")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(Color.lInk2)
-                .frame(width: collapsed ? 36 : 26, height: 24)
-                .background(Color.lPanel)
-                .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.lLine, lineWidth: 1))
-                .clipShape(RoundedRectangle(cornerRadius: 6))
+            Image(systemName: item.icon)
+                .font(.system(size: 22, weight: .medium))
+                .foregroundStyle(active ? Color.lInk : Color.lInk3)
+                .frame(width: 30, height: 30)
+                .background(
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(active ? Color.lInk.opacity(0.10) : Color.clear)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(active ? Color.lLine : Color.clear, lineWidth: 1)
+                )
         }
         .buttonStyle(.plain)
         .pointerStyle(.link)
-        .help(collapsed ? "Expand sidebar" : "Collapse to icons")
+        .help(item.label)
     }
 
-    @ViewBuilder
-    private var recentSection: some View {
-        let recents = app.recentItems
-        if !recents.isEmpty {
-            VStack(alignment: .leading, spacing: 2) {
-                HStack {
-                    Text("Recent")
-                        .font(Typo.eyebrow)
-                        .textCase(.uppercase)
-                        .tracking(1.5)
-                        .foregroundStyle(Color.lInk4)
-                    Spacer()
-                    Button {
-                        app.recentItemsRaw = ""
-                        app.objectWillChange.send()
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 8, weight: .bold))
-                            .foregroundStyle(Color.lInk4)
-                    }
-                    .buttonStyle(.plain).pointerStyle(.link)
-                    .help("Clear recent")
-                }
-                .padding(.horizontal, 18)
-                .padding(.bottom, 4)
+    // MARK: Shared bits
 
-                let alive = liveIDs
-                ForEach(recents) { item in
-                    let isDeleted = !alive.contains(item.entityID)
-                    Button {
-                        guard !isDeleted else { return }
-                        switch item.kind {
-                        case .account:
-                            app.pendingFocusAccountID = item.entityID
-                            app.selectedScreen = .accounts
-                        case .snapshot:
-                            app.activeSnapshotID = item.entityID
-                            app.selectedScreen = .snapshots
-                        case .person:
-                            app.pendingFocusPersonID = item.entityID
-                            app.selectedScreen = .people
-                        case .country:
-                            app.pendingFocusCountryID = item.entityID
-                            app.selectedScreen = .countries
-                        }
-                    } label: {
-                        HStack(spacing: 8) {
-                            Image(systemName: iconFor(item.kind))
-                                .font(.system(size: 10))
-                                .foregroundStyle(isDeleted ? Color.lInk4 : Color.lInk3)
-                                .frame(width: 14)
-                            Text(item.label)
-                                .font(Typo.sans(11.5))
-                                .foregroundStyle(isDeleted ? Color.lInk4 : Color.lInk2)
-                                .strikethrough(isDeleted, color: Color.lInk4)
-                                .lineLimit(1)
-                            Spacer(minLength: 0)
-                        }
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 4)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .pointerStyle(isDeleted ? .default : .link)
-                    .disabled(isDeleted)
-                    .help(isDeleted ? "Deleted — restore via Edit ▸ Recently Deleted" : "")
-                }
+    @ViewBuilder
+    private func recentRow(_ item: AppState.RecentItem, isDeleted: Bool) -> some View {
+        Button {
+            guard !isDeleted else { return }
+            switch item.kind {
+            case .account:
+                app.pendingFocusAccountID = item.entityID
+                app.selectedScreen = .accounts
+            case .snapshot:
+                app.activeSnapshotID = item.entityID
+                app.selectedScreen = .snapshots
+            case .person:
+                app.pendingFocusPersonID = item.entityID
+                app.selectedScreen = .people
+            case .country:
+                app.pendingFocusCountryID = item.entityID
+                app.selectedScreen = .countries
             }
-            .padding(.bottom, 10)
+        } label: {
+            Label {
+                Text(item.label)
+                    .strikethrough(isDeleted, color: Color.lInk4)
+                    .foregroundStyle(isDeleted ? Color.lInk4 : Color.lInk2)
+                    .lineLimit(1)
+            } icon: {
+                Image(systemName: iconFor(item.kind))
+                    .foregroundStyle(isDeleted ? Color.lInk4 : Color.lInk3)
+            }
         }
+        .buttonStyle(.plain)
+        .pointerStyle(isDeleted ? .default : .link)
+        .disabled(isDeleted)
+        .help(isDeleted ? "Deleted — restore via Edit ▸ Recently Deleted" : "")
     }
 
     private func iconFor(_ k: AppState.RecentKind) -> String {
@@ -280,73 +201,6 @@ struct Sidebar: View {
         case .person:   return "person.crop.circle"
         case .country:  return "flag"
         }
-    }
-
-    private var brand: some View {
-        HStack(spacing: 12) {
-            Image(app.appIconChoice.assetName)
-                .resizable()
-                .interpolation(.high)
-                .frame(width: collapsed ? 30 : 38, height: collapsed ? 30 : 38)
-                .clipShape(RoundedRectangle(cornerRadius: 7))
-                .overlay(RoundedRectangle(cornerRadius: 7).stroke(Color.lLine, lineWidth: 1))
-            if !collapsed {
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("Ledgerly")
-                        .font(Typo.serifNum(19))
-                        .foregroundStyle(Color.lInk)
-                        .lineLimit(1)
-                    Text("v\(AppInfo.versionString)")
-                        .font(Typo.eyebrow)
-                        .textCase(.uppercase)
-                        .tracking(1.2)
-                        .foregroundStyle(Color.lInk3)
-                        .lineLimit(1)
-                }
-            }
-        }
-    }
-
-    private func navRow(_ item: NavItem) -> some View {
-        let active = app.selectedScreen == item.screen
-        return Button {
-            app.selectedScreen = item.screen
-        } label: {
-            Group {
-                if collapsed {
-                    Image(systemName: item.icon)
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(active ? Color.lInk : Color.lInk3)
-                        .frame(width: 36, height: 32)
-                } else {
-                    HStack(spacing: 10) {
-                        Image(systemName: item.icon)
-                            .font(.system(size: 12, weight: .medium))
-                            .frame(width: 16)
-                            .foregroundStyle(active ? Color.lInk : Color.lInk3)
-                        Text(item.label)
-                            .font(Typo.sans(12.5, weight: active ? .semibold : .medium))
-                            .foregroundStyle(active ? Color.lInk : Color.lInk2)
-                            .lineLimit(1)
-                        Spacer()
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 7)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: collapsed ? .center : .leading)
-            .background(active ? Color.lPanel : Color.lBg2.opacity(0.001))
-            .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(active ? Color.lLine : Color.clear, lineWidth: 1)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-            .contentShape(RoundedRectangle(cornerRadius: 8))
-        }
-        .buttonStyle(.plain)
-        .pointerStyle(.link)
-        .padding(.horizontal, collapsed ? 6 : 10)
-        .help(collapsed ? item.label : "")
     }
 
 }
